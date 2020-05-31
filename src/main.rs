@@ -48,7 +48,7 @@ struct Opt {
     cmd: Command,
 }
 #[derive(StructOpt, Debug)]
-#[structopt(about = "the build tools commands")]
+#[structopt(about = "the android build tools")]
 enum Command {
     /// build modules
     Build {

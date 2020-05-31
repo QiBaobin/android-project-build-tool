@@ -5,7 +5,7 @@
 * cargo
 
 ``` sh
-cargo build
+cargo install --git https://github.com/QiBaobin/android-project-build-tool.git
 ```
 
 * download from release and make it excutable
@@ -13,10 +13,10 @@ cargo build
 ## usage
 
 ``` sh
-the build tools commands
+the android build tools
 
 USAGE:
-    build-tools [FLAGS] [OPTIONS] <SUBCOMMAND>
+    abt [FLAGS] [OPTIONS] <SUBCOMMAND>
 
 FLAGS:
     -c, --contain-local-references    if projects contains local references, if so we can't build module separately
