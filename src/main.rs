@@ -6,7 +6,7 @@ mod util;
 use dirs::home_dir;
 use domain::*;
 use error::Result;
-use log::{trace, warn, Level};
+use log::{trace, warn, LevelFilter};
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::PathBuf;
@@ -35,10 +35,6 @@ struct Opt {
     #[structopt(short, long, env = "GRADLE_CMD")]
     gradle_cmd: Option<String>,
 
-    /// the dirtory to contain android and domain templates
-    #[structopt(short, long)]
-    templates_dir: Option<String>,
-
     /// if projects contains local references, if so we can't build module separately
     #[structopt(short, long)]
     contain_local_references: bool,
@@ -48,7 +44,7 @@ struct Opt {
     cmd: Command,
 }
 #[derive(StructOpt, Debug)]
-#[structopt(about = "the android build tools")]
+#[structopt(about = "the build tools commands")]
 enum Command {
     /// build modules
     Build {
@@ -81,10 +77,13 @@ enum Command {
     Create {
         /// the module name
         #[structopt(short, long)]
-        name: String,
-        /// the type of the module, can be one of android, kotlin, and feature
-        #[structopt(name = "type", default_value = "feature", short, long)]
-        project_type: String,
+        path: String,
+        /// the directory contains different type of templates
+        #[structopt(default_value = "root-project/module-templates", short, long)]
+        from: String,
+        /// the list of template types seperated by comma(,) that the module want to contain , match the the dir name in the from dirtory
+        #[structopt(default_value = "", short, long)]
+        types: String,
     },
     /// Create a pull request
     PullRequest {
@@ -140,13 +139,14 @@ fn main() -> Result<()> {
     openssl_probe::init_ssl_cert_env_vars();
 
     let opt = Opt::from_args();
-    simple_logger::init_with_level(match opt.verbose {
-        0 => Level::Warn,
-        1 => Level::Info,
-        2 => Level::Debug,
-        _ => Level::Trace,
-    })
-    .unwrap_or_else(|e| warn!("Can't setup logger caused by {:?}", e));
+    let _ = simple_logger::SimpleLogger::new()
+        .with_level(match opt.verbose {
+            0 => LevelFilter::Warn,
+            1 => LevelFilter::Info,
+            2 => LevelFilter::Debug,
+            _ => LevelFilter::Trace,
+        })
+        .init();
 
     trace!("Arguments: {:?}", opt);
 
@@ -154,7 +154,6 @@ fn main() -> Result<()> {
         &opt.root_project_dir,
         &opt.excluded_projects,
         opt.gradle_cmd.clone(),
-        opt.templates_dir.clone(),
     );
     match opt.cmd {
         Command::Build {
@@ -178,7 +177,7 @@ fn main() -> Result<()> {
             ps.scan(&ps.create_filters().with_name_regex(&projects));
             ps.open(clean)
         }
-        Command::Create { name, project_type } => ps.create(&name, &project_type),
+        Command::Create { path, from, types } => ps.create(&path, &from, &types),
         Command::PullRequest {
             summary,
             description,

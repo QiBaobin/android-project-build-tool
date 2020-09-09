@@ -5,26 +5,59 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 impl Projects {
-    pub fn create(&mut self, name: &str, module_type: &str) -> Result<()> {
-        let modules = match module_type.to_lowercase().as_str() {
-            "feature" => vec!["domain", "android"],
-            "android" => vec!["android"],
-            "kotlin" => vec!["domain"],
-            _ => {
-                return Err(Error::from_str(&format!(
-                    "Not supported module type: {}",
-                    module_type
-                )));
-            }
+    pub fn create(&mut self, path: &str, from: &str, types: &str) -> Result<()> {
+        let template_path = self.relative_to_root(from);
+        let ref module_types: Vec<_> = if types.trim().is_empty() {
+            fs::read_dir(&template_path)
+                .unwrap()
+                .filter_map(|de| de.unwrap().file_name().to_str().map(|s| s.to_string()))
+                .collect()
+        } else {
+            types
+                .split(',')
+                .filter_map(|s| {
+                    let name = s.trim();
+                    if name.is_empty() {
+                        None
+                    } else if !template_path.join(name).is_dir() {
+                        warn!(
+                            "There is no such type: {} in the template dir {:?}",
+                            name, template_path
+                        );
+                        None
+                    } else {
+                        Some(name.to_string())
+                    }
+                })
+                .collect()
         };
-        let name_pattern = if modules.len() == 1 {
-            format!("^{}$", name)
+
+        if module_types.is_empty() {
+            return Err(Error::from_str(&format!(
+                "There is no module template in {}",
+                template_path.display()
+            )));
+        }
+
+        let target_dir = &self.relative_to_root(path);
+
+        // check if modules exist
+        let relative_target = target_dir
+            .strip_prefix(self.root())
+            .unwrap()
+            .components()
+            .map(|c| c.as_os_str().to_str().unwrap())
+            .collect::<Vec<_>>()
+            .join("-");
+        let name_pattern = if module_types.len() == 1 {
+            format!("^{}$", relative_target)
         } else {
             format!(
                 "^{}$",
-                modules
+                module_types
                     .iter()
-                    .map(|t| format!("{}-{}", name, t))
+                    .filter(|t| t.len() > 0)
+                    .map(|t| format!("{}-{}", relative_target, t))
                     .collect::<Vec<_>>()
                     .join("|")
                     .as_str()
@@ -40,49 +73,56 @@ impl Projects {
             )));
         }
 
-        let root = &self.vc().root();
-        let path = Path::new(name).to_path_buf();
-        let template_path = self.templates_dir();
-
-        info!("Creating module {} as {}", name, module_type);
-
-        modules
-            .iter()
-            .map(|m| {
-                (
-                    if modules.len() == 1 {
-                        path.clone()
-                    } else {
-                        path.join(m)
-                    },
-                    template_path.join(m),
-                )
-            })
-            .try_for_each(|(to, from)| copy_dir(&from, &to, root))
-            .map_err(|e| Error::new("Can't copy template directory", e))?;
-
-        debug!("Add files to version control system");
-        self.vc().add_path(Path::new(name))?;
+        // create them
+        if module_types.len() == 1 {
+            self.create_one_module(&template_path.join(&module_types[0]), &target_dir)?;
+        } else {
+            module_types.iter().try_for_each(|t| {
+                self.create_one_module(&template_path.join(t), &target_dir.join(t))
+            })?;
+        }
 
         self.scan(&filters);
         debug!("Add {:?} to the projects", &self.iter());
         self.append_to_default_settings_file()
+            .and_then(|f| self.vc().add_path(&f))
+    }
+
+    fn create_one_module<P: AsRef<Path>>(&self, template: &P, target: &P) -> Result<()> {
+        info!(
+            "Creating module {:#?} from {:#?}",
+            target.as_ref(),
+            template.as_ref()
+        );
+
+        copy_dir(template.as_ref(), target.as_ref(), self.root().as_path())
+            .map_err(|e| Error::new("Can't copy template directory", e))?;
+
+        debug!("Add files to version control system");
+        self.vc().add_path(target.as_ref())
+    }
+
+    fn relative_to_root(&self, path: &str) -> PathBuf {
+        let mut pb = PathBuf::from(path);
+        if pb.is_relative() {
+            pb = self.root().join(pb);
+        }
+        pb
     }
 }
 
-fn copy_dir(from_absolate: &Path, to_path: &Path, root: &Path) -> io::Result<()> {
+fn copy_dir(from_absolate: &Path, to_absolute: &Path, root: &Path) -> io::Result<()> {
     debug!(
-        "Coping template from {:?} to {:?}",
-        &from_absolate, &to_path
+        "Coping template from {:#?} to {:#?}",
+        from_absolate, to_absolute
     );
 
-    let to = to_path.to_str().unwrap();
+    let to = to_absolute.strip_prefix(root).unwrap().to_str().unwrap();
     let package_path = package_name(to).replace(".", "/");
     debug!("Package path is {}", &package_path);
 
     let feature_name = feature_name(to);
     debug!("Feature name is {}", &feature_name);
-    let to_absolute = root.join(to_path);
     let target_path = |path: &Path| {
         to_absolute.join(path.strip_prefix(from_absolate).unwrap().iter().fold(
             PathBuf::new(),
@@ -100,7 +140,7 @@ fn copy_dir(from_absolate: &Path, to_path: &Path, root: &Path) -> io::Result<()>
     };
 
     let tokens = &create_tokens(to);
-    visit_dirs(from_absolate, &|p: &Path| {
+    visit_dirs(from_absolate.as_ref(), &|p: &Path| {
         if p.is_dir() {
             let d = target_path(p);
             trace!("Creating directory: {:?}", d);

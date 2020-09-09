@@ -7,7 +7,6 @@ use std::io::prelude::*;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 
-const TEMPLATES_DIR: &str = "module-templates";
 #[derive(Debug, Clone)]
 pub struct Project {
     pub path: PathBuf,
@@ -17,7 +16,6 @@ pub struct Projects {
     root_project_dir: String,
     excluded_projects: String,
     gradle_cmd: Option<String>,
-    templates_dir: Option<String>,
     projects: Vec<Project>,
     vc: GitVersionControl,
 }
@@ -35,13 +33,11 @@ impl Projects {
         root_project_dir: &str,
         excluded_projects: &str,
         gradle_cmd: Option<String>,
-        templates_dir: Option<String>,
     ) -> Self {
         Self {
             root_project_dir: root_project_dir.to_string(),
             excluded_projects: excluded_projects.to_string(),
             gradle_cmd,
-            templates_dir,
             projects: vec![],
             vc: GitVersionControl::new(),
         }
@@ -116,14 +112,12 @@ impl Projects {
         &self.vc
     }
 
-    pub fn root_project(&self) -> PathBuf {
-        self.vc().root().join(&self.root_project_dir)
+    pub fn root(&self) -> PathBuf {
+        self.vc.root()
     }
 
-    pub fn templates_dir(&self) -> PathBuf {
-        self.templates_dir
-            .as_ref()
-            .map_or_else(|| self.root_project().join(TEMPLATES_DIR), PathBuf::from)
+    pub fn root_project(&self) -> PathBuf {
+        self.vc().root().join(&self.root_project_dir)
     }
 
     pub fn create_settings(&self, file: &Path) -> Result<()> {
@@ -144,14 +138,15 @@ impl Projects {
         self.create_settings(&file)
     }
 
-    pub fn append_to_default_settings_file(&self) -> Result<()> {
+    pub fn append_to_default_settings_file(&self) -> Result<PathBuf> {
         let file = self.root_project().join("settings.gradle.kts");
         if file.exists() {
             let mut f = OpenOptions::new()
                 .append(true)
                 .open(&file)
                 .map_err(|e| Error::new(&format!("Can't open {:?}", &file), e))?;
-            self.writ_to_settings_file(self.iter(), &mut f)
+            self.writ_to_settings_file(self.iter(), &mut f)?;
+            Ok(file)
         } else {
             Err(Error::from_str(&format!(
                 "There is no settings file exists at {:?}",
@@ -189,6 +184,17 @@ impl Projects {
         mut projects: I,
         file: &mut File,
     ) -> Result<()> {
+        fn relative_to(p: &Path, from_dir: &Path) -> PathBuf {
+            let mut from = from_dir.to_path_buf();
+            let mut pb = PathBuf::from(".");
+            while !p.starts_with(&from) {
+                pb.push("..");
+                from.pop();
+            }
+            pb.push(p.strip_prefix(&from).unwrap());
+            pb
+        }
+
         projects
             .try_for_each(|p| {
                 write!(
@@ -196,7 +202,7 @@ impl Projects {
                     "include(\":{}\")\nproject(\":{}\").projectDir = file(\"{}\")\n\n",
                     &p.name,
                     &p.name,
-                    &Path::new("..").join(&p.path).to_str().unwrap()
+                    relative_to(&p.path.as_path(), &self.root_project()).display()
                 )
             })
             .map_err(|e| Error::new(&format!("Can't write to {:?}", &file), e))

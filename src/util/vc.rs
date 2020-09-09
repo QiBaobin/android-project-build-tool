@@ -115,11 +115,16 @@ impl VersionControl for GitVersionControl {
     fn add_path(&self, path: &std::path::Path) -> Result<()> {
         debug!("Add {:?} to the repository", path);
 
+        let relative_path = path
+            .strip_prefix(self.root())
+            .unwrap_or(path)
+            .to_str()
+            .unwrap();
         self.repository.index().map_or_else(
             |e| Err(Error::new("Can't get the index of the repo", e)),
             |mut i| {
                 i.add_all(
-                    &[format!("{}/*", path.to_str().unwrap())],
+                    &[relative_path, &format!("{}/*", relative_path)],
                     IndexAddOption::DEFAULT,
                     None,
                 )
