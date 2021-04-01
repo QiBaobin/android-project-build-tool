@@ -27,7 +27,7 @@ FLAGS:
 OPTIONS:
     -e, --excluded-projects <excluded-projects>
             the regex of projects' name under root_project_dir we want to exclude always [default: module-
-            templates|build-tools|root-project.*]
+            templates|build-tools|root-project.*|buildSrc|^$]
     -g, --gradle-cmd <gradle-cmd>
             the gradel command to run for building, you can give args here too [env: GRADLE_CMD=]
 

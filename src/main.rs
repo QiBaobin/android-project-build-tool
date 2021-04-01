@@ -21,7 +21,7 @@ struct Opt {
 
     /// the regex of projects' name under root_project_dir we want to exclude always
     #[structopt(
-        default_value = "module-templates|build-tools|root-project.*",
+        default_value = "module-templates|build-tools|root-project.*|buildSrc|^$",
         short,
         long
     )]
