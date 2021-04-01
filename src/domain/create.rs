@@ -5,7 +5,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 impl Projects {
-    pub fn create(&mut self, path: &str, from: &str, types: &str) -> Result<()> {
+    pub fn create(&mut self, path: &str, from: &str, types: &str, excludes: &str) -> Result<()> {
         let template_path = self.relative_to_root(from);
         let ref module_types: Vec<_> = if types.trim().is_empty() {
             fs::read_dir(&template_path)
@@ -73,12 +73,17 @@ impl Projects {
             )));
         }
 
+        let excludes_files: Vec<_> = excludes.split(',').collect();
         // create them
         if module_types.len() == 1 {
-            self.create_one_module(&template_path.join(&module_types[0]), &target_dir)?;
+            self.create_one_module(
+                &template_path.join(&module_types[0]),
+                &target_dir,
+                &excludes_files,
+            )?;
         } else {
             module_types.iter().try_for_each(|t| {
-                self.create_one_module(&template_path.join(t), &target_dir.join(t))
+                self.create_one_module(&template_path.join(t), &target_dir.join(t), &excludes_files)
             })?;
         }
 
@@ -88,15 +93,25 @@ impl Projects {
             .and_then(|f| self.vc().add_path(&f))
     }
 
-    fn create_one_module<P: AsRef<Path>>(&self, template: &P, target: &P) -> Result<()> {
+    fn create_one_module<P: AsRef<Path>>(
+        &self,
+        template: &P,
+        target: &P,
+        excludes_files: &[&str],
+    ) -> Result<()> {
         info!(
             "Creating module {:#?} from {:#?}",
             target.as_ref(),
             template.as_ref()
         );
 
-        copy_dir(template.as_ref(), target.as_ref(), self.root().as_path())
-            .map_err(|e| Error::new("Can't copy template directory", e))?;
+        copy_dir(
+            template.as_ref(),
+            target.as_ref(),
+            self.root().as_path(),
+            excludes_files,
+        )
+        .map_err(|e| Error::new("Can't copy template directory", e))?;
 
         debug!("Add files to version control system");
         self.vc().add_path(target.as_ref())
@@ -111,7 +126,12 @@ impl Projects {
     }
 }
 
-fn copy_dir(from_absolate: &Path, to_absolute: &Path, root: &Path) -> io::Result<()> {
+fn copy_dir(
+    from_absolate: &Path,
+    to_absolute: &Path,
+    root: &Path,
+    excludes_files: &[&str],
+) -> io::Result<()> {
     debug!(
         "Coping template from {:#?} to {:#?}",
         from_absolate, to_absolute
@@ -141,7 +161,19 @@ fn copy_dir(from_absolate: &Path, to_absolute: &Path, root: &Path) -> io::Result
 
     let tokens = &create_tokens(to);
     visit_dirs(from_absolate.as_ref(), &|p: &Path| {
-        if p.is_dir() {
+        if p.file_name()
+            .map(|f| f.to_str())
+            .flatten()
+            .map(|f| {
+                excludes_files
+                    .iter()
+                    .any(|name| name.to_string() == f.to_string())
+            })
+            .unwrap_or(false)
+        {
+            trace!("Skip file: {:?}", p);
+            Ok(())
+        } else if p.is_dir() {
             let d = target_path(p);
             trace!("Creating directory: {:?}", d);
             fs::create_dir_all(d)

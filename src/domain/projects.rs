@@ -29,17 +29,28 @@ impl Deref for Projects {
 }
 
 impl Projects {
-    pub fn new(
-        root_project_dir: &str,
-        excluded_projects: &str,
-        gradle_cmd: Option<String>,
-    ) -> Self {
+    pub fn new(excluded_projects: &str, gradle_cmd: Option<String>) -> Self {
+        let vc = GitVersionControl::new();
+        let root = vc.root();
+        let root_project_dir =
+            if root.join("settings.gradle").exists() || root.join("settings.gradle.kt").exists() {
+                root.to_str().unwrap().to_string()
+            } else {
+                match glob(root.join("*").join("settings.gradle*").to_str().unwrap()) {
+                    Ok(mut files) => files.next().map_or_else(
+                        || ".".to_string(),
+                        |f| f.unwrap().parent().unwrap().to_str().unwrap().to_string(),
+                    ),
+                    _ => " ".to_string(),
+                }
+            };
+
         Self {
-            root_project_dir: root_project_dir.to_string(),
+            root_project_dir,
             excluded_projects: excluded_projects.to_string(),
             gradle_cmd,
             projects: vec![],
-            vc: GitVersionControl::new(),
+            vc,
         }
     }
 

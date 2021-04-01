@@ -31,9 +31,6 @@ OPTIONS:
     -g, --gradle-cmd <gradle-cmd>
             the gradel command to run for building, you can give args here too [env: GRADLE_CMD=]
 
-    -r, --root-project-dir <root-project-dir>
-            the dirtory to contain root build.gradle.kts, settings.gradle.kts etc [default: root-project]
-
     -t, --templates-dir <templates-dir>            the dirtory to contain android and domain templates
 
 SUBCOMMANDS:

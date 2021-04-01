@@ -19,10 +19,6 @@ struct Opt {
     #[structopt(short, parse(from_occurrences))]
     verbose: usize,
 
-    /// the dirtory to contain root build.gradle.kts, settings.gradle.kts etc.
-    #[structopt(default_value = "root-project", short, long)]
-    root_project_dir: String,
-
     /// the regex of projects' name under root_project_dir we want to exclude always
     #[structopt(
         default_value = "module-templates|build-tools|root-project.*",
@@ -61,7 +57,7 @@ enum Command {
         #[structopt(default_value = ".*", short, long)]
         projects: String,
         /// how many projects shall run in one gradle process
-        #[structopt(default_value = "4", short, long)]
+        #[structopt(default_value = "10", short, long)]
         number_of_projects_run_together: usize,
     },
     /// Control what modules will be included in default project
@@ -84,6 +80,10 @@ enum Command {
         /// the list of template types seperated by comma(,) that the module want to contain , match the the dir name in the from dirtory
         #[structopt(default_value = "", short, long)]
         types: String,
+        /// the list of files, directories seperated by comma(,) that would not copies from
+        /// template modules
+        #[structopt(default_value = ".DS_Store", long)]
+        excludes: String,
     },
     /// Create a pull request
     PullRequest {
@@ -150,11 +150,7 @@ fn main() -> Result<()> {
 
     trace!("Arguments: {:?}", opt);
 
-    let mut ps = Projects::new(
-        &opt.root_project_dir,
-        &opt.excluded_projects,
-        opt.gradle_cmd.clone(),
-    );
+    let mut ps = Projects::new(&opt.excluded_projects, opt.gradle_cmd.clone());
     match opt.cmd {
         Command::Build {
             all,
@@ -177,7 +173,12 @@ fn main() -> Result<()> {
             ps.scan(&ps.create_filters().with_name_regex(&projects));
             ps.open(clean)
         }
-        Command::Create { path, from, types } => ps.create(&path, &from, &types),
+        Command::Create {
+            path,
+            from,
+            types,
+            excludes,
+        } => ps.create(&path, &from, &types, &excludes),
         Command::PullRequest {
             summary,
             description,
