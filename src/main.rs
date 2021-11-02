@@ -21,7 +21,7 @@ struct Opt {
 
     /// the regex of projects' name under root_project_dir we want to exclude always
     #[structopt(
-        default_value = "module-templates|build-tools|root-project.*|buildSrc|^$",
+        default_value = "module-templates|build-support|gradle|build-tools|root-project.*|buildSrc|^$",
         short,
         long
     )]
@@ -75,7 +75,7 @@ enum Command {
         #[structopt(short, long)]
         path: String,
         /// the directory contains different type of templates
-        #[structopt(default_value = "root-project/module-templates", short, long)]
+        #[structopt(default_value = "module-templates", short, long)]
         from: String,
         /// the list of template types seperated by comma(,) that the module want to contain , match the the dir name in the from dirtory
         #[structopt(default_value = "", short, long)]

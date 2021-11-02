@@ -33,7 +33,7 @@ impl Projects {
         let vc = GitVersionControl::new();
         let root = vc.root();
         let root_project_dir =
-            if root.join("settings.gradle").exists() || root.join("settings.gradle.kt").exists() {
+            if root.join("settings.gradle").exists() || root.join("settings.gradle.kts").exists() {
                 root.to_str().unwrap().to_string()
             } else {
                 match glob(root.join("*").join("settings.gradle*").to_str().unwrap()) {
