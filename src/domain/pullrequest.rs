@@ -17,24 +17,18 @@ impl Projects {
         mut request: Request,
         auth: Auth,
         verbose: usize,
-        contain_local_references: bool,
         open: bool,
     ) -> Result<()> {
         check_request(&mut request, self.vc())?;
         check_conflicts(&request.to_branch, self.vc())?;
 
         info!("Build modules");
-        if contain_local_references {
-            self.scan(&self.create_filters());
-            self.build(&["build".into()], 600, verbose)?;
-        } else {
-            self.scan(
-                &self
-                    .create_filters()
-                    .since_commit(self.vc(), &format!("origin/{}", &request.to_branch)),
-            );
-            self.build(&["build".into()], 4, verbose)?;
-        }
+        self.scan(
+            &self
+                .create_filters()
+                .since_commit(self.vc(), &format!("origin/{}", &request.to_branch)),
+        );
+        self.build(&["build".into()], 4, verbose)?;
         info!("Build complete");
 
         push_changes(&request.branch_name, self.vc())?;

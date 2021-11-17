@@ -31,10 +31,6 @@ struct Opt {
     #[structopt(short, long, env = "GRADLE_CMD")]
     gradle_cmd: Option<String>,
 
-    /// if projects contains local references, if so we can't build module separately
-    #[structopt(short, long)]
-    contain_local_references: bool,
-
     /// the command we wan to run
     #[structopt(subcommand)] // Note that we mark a field as a subcommand
     cmd: Command,
@@ -216,7 +212,6 @@ fn main() -> Result<()> {
                 },
                 Auth { user, password },
                 opt.verbose,
-                opt.contain_local_references,
                 open,
             )
         }
