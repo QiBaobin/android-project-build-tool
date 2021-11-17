@@ -57,7 +57,7 @@ enum Command {
         #[structopt(default_value = ".*", short, long)]
         projects: String,
         /// how many projects shall run in one gradle process
-        #[structopt(default_value = "10", short, long)]
+        #[structopt(default_value = "1000", short, long)]
         number_of_projects_run_together: usize,
     },
     /// Control what modules will be included in default project

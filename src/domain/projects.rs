@@ -78,42 +78,85 @@ impl Projects {
         let filters = &filters.0;
         match glob(build_files) {
             Ok(files) => {
-                self.projects = files
-                    .filter_map(|f| {
-                        f.map_or_else(
-                            |e| {
-                                warn!("Io error {:?}", e);
-                                None
-                            },
-                            Some,
-                        )
-                    })
-                    .map(|f| {
-                        let project_dir = f.parent().unwrap();
-                        Project {
-                            path: project_dir.to_path_buf(),
-                            name: project_dir
-                                .strip_prefix(root)
-                                .unwrap()
-                                .iter()
-                                .map(|os_str| os_str.to_str().unwrap())
-                                .collect::<Vec<_>>()
-                                .join("-"),
-                        }
-                    })
-                    .filter(|p| {
-                        let required = filters.iter().all(|f| f(p));
-                        if required {
-                            info!("Found project met criteria: {}", p.name);
+                let mut matched = vec![];
+                let mut others = vec![];
+                for f in files.filter_map(|f| {
+                    f.map_or_else(
+                        |e| {
+                            warn!("Io error {:?}", e);
+                            None
+                        },
+                        Some,
+                    )
+                }) {
+                    let project_dir = f.parent().unwrap();
+                    let p = Project {
+                        path: project_dir.to_path_buf(),
+                        name: project_dir
+                            .strip_prefix(root)
+                            .unwrap()
+                            .iter()
+                            .map(|os_str| os_str.to_str().unwrap())
+                            .collect::<Vec<_>>()
+                            .join(":")
+                            .replace(":android", "-android")
+                            .replace(":domain", "-domain"),
+                    };
+
+                    if filters.iter().all(|f| f(&p)) {
+                        info!("Found project met criteria: {}", p.name);
+                        matched.push((f.clone(), p));
+                    } else {
+                        others.push((f.clone(), p));
+                    }
+                }
+                let mut dep_checked = 0;
+                let dep_regex = Regex::new(r#"['"]:([^'"]+)"#).unwrap();
+                while !others.is_empty() {
+                    let locals: Vec<String> = matched[dep_checked..]
+                        .iter()
+                        .filter_map(|(f, p)| {
+                            File::open(f)
+                                .map(|f| {
+                                    let f = std::io::BufReader::new(f);
+                                    f.lines()
+                                        .filter_map(|l| l.ok())
+                                        .filter(|l| {
+                                            !l.trim_start().starts_with("//")
+                                                && l.contains("project(")
+                                        })
+                                        .filter_map(|l| {
+                                            dep_regex.captures(&l).map(|cap| {
+                                                info!(
+                                                    "Project {} dependency : {}",
+                                                    p.name, &cap[1]
+                                                );
+                                                cap[1].to_string()
+                                            })
+                                        })
+                                })
+                                .ok()
+                        })
+                        .flatten()
+                        .collect();
+                    if locals.is_empty() {
+                        break;
+                    }
+                    dep_checked = matched.len();
+
+                    let mut i = 0;
+                    while i < others.len() {
+                        let name = &others[i].1.name;
+                        if locals.contains(&name) {
+                            info!("Add dependency project : {}", name);
+                            matched.push(others.swap_remove(i));
                         } else {
-                            debug!(
-                                "Found project {} that doesn't Meet criteria, no need to run",
-                                p.name
-                            );
+                            i += 1;
                         }
-                        required
-                    })
-                    .collect()
+                    }
+                }
+
+                self.projects = matched.into_iter().map(|(_, p)| p).collect();
             }
             Err(e) => panic!("Can't detect projects caused by {:?}", e),
         };
@@ -156,7 +199,7 @@ impl Projects {
                 .append(true)
                 .open(&file)
                 .map_err(|e| Error::new(&format!("Can't open {:?}", &file), e))?;
-            self.writ_to_settings_file(self.iter(), &mut f)?;
+            self.write_to_settings_file(self.iter(), &mut f)?;
             Ok(file)
         } else {
             Err(Error::from_str(&format!(
@@ -187,10 +230,10 @@ impl Projects {
                     e
                 });
         }
-        self.writ_to_settings_file(projects, &mut file)
+        self.write_to_settings_file(projects, &mut file)
     }
 
-    fn writ_to_settings_file<'projects, I: Iterator<Item = &'projects Project>>(
+    fn write_to_settings_file<'projects, I: Iterator<Item = &'projects Project>>(
         &'projects self,
         mut projects: I,
         file: &mut File,
