@@ -137,6 +137,7 @@ impl Projects {
                 if scan_impacted_projects && !others.is_empty() && !matched.is_empty() {
                     read_dependencies(others.iter_mut());
 
+                    let exclude_rule = self.create_filters().0;
                     let mut searched = 0;
                     while searched < matched.len() {
                         let end = matched.len();
@@ -149,8 +150,14 @@ impl Projects {
                                     matched[searched..end].iter().any(|(r, _, _)| r.name == *p)
                                 })
                             }) {
-                                info!("Project {} is impacted, added too", &m.0.name);
-                                matched.push(others.swap_remove(i));
+                                let name = &m.0.name;
+                                if exclude_rule.iter().all(|r| r(&m.0)) {
+                                    info!("Project {} is impacted, added too", name);
+                                    matched.push(others.swap_remove(i));
+                                } else {
+                                    info!("Project {} is impacted, but it's excluded", name);
+                                    i += 1;
+                                }
                             } else {
                                 i += 1;
                             }
