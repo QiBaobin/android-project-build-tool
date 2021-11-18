@@ -66,7 +66,14 @@ impl VersionControl for GitVersionControl {
         let tree = self
             .repository
             .revparse_single(commit)
-            .map(|r| r.id())
+            .map(|r| {
+                self.repository
+                    .merge_base(
+                        r.id(),
+                        self.repository.revparse_single("HEAD").unwrap().id(),
+                    )
+                    .unwrap_or(r.id())
+            })
             .or_else(|_| {
                 self.repository
                     .refname_to_id(&format!("refs/remotes/{}", commit))
