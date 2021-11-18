@@ -110,10 +110,11 @@ impl Projects {
                         others.push((f.clone(), p));
                     }
                 }
+                let required = matched.len();
                 let mut dep_checked = 0;
                 let dep_regex = Regex::new(r#"['"]:([^'"]+)"#).unwrap();
                 while !others.is_empty() {
-                    let locals: Vec<String> = matched[dep_checked..]
+                    let mut dependencies: Vec<String> = matched[dep_checked..]
                         .iter()
                         .filter_map(|(f, p)| {
                             File::open(f)
@@ -139,19 +140,44 @@ impl Projects {
                         })
                         .flatten()
                         .collect();
-                    if locals.is_empty() {
+                    if dependencies.is_empty() {
                         break;
                     }
                     dep_checked = matched.len();
 
+                    dependencies.dedup();
                     let mut i = 0;
                     while i < others.len() {
                         let name = &others[i].1.name;
-                        if locals.contains(&name) {
+                        if let Some((j, _)) =
+                            dependencies.iter().enumerate().find(|(_, d)| d == &name)
+                        {
                             info!("Add dependency project : {}", name);
                             matched.push(others.swap_remove(i));
+                            dependencies.swap_remove(j);
                         } else {
                             i += 1;
+                        }
+                    }
+                }
+                if !others.is_empty() {
+                    for (fp, p) in others.into_iter() {
+                        if let Ok(f) = File::open(&fp) {
+                            let f = std::io::BufReader::new(f);
+                            for l in f.lines() {
+                                let l = l.unwrap();
+                                if l.trim_start().starts_with("//") || !l.contains("project(") {
+                                    continue;
+                                }
+                                if let Some(cap) = dep_regex.captures(&l) {
+                                    let m = &cap[1];
+                                    if matched[..required].iter().any(|(_, r)| r.name == m) {
+                                        info!("Project {} depends on {}, added too", &p.name, m);
+                                        matched.push((fp, p));
+                                        break;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
