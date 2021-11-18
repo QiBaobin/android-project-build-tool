@@ -5,7 +5,14 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 impl Projects {
-    pub fn create(&mut self, path: &str, from: &str, types: &str, excludes: &str) -> Result<()> {
+    pub fn create(
+        &mut self,
+        path: &str,
+        from: &str,
+        types: &str,
+        excludes: &str,
+        scan_impacted_projects: bool,
+    ) -> Result<()> {
         let template_path = self.relative_to_root(from);
         let ref module_types: Vec<_> = if types.trim().is_empty() {
             fs::read_dir(&template_path)
@@ -65,7 +72,7 @@ impl Projects {
         };
         debug!("Use {} to filter projects", &name_pattern);
         let filters = self.create_filters().with_name_regex(&name_pattern);
-        self.scan(&filters);
+        self.scan(&filters, scan_impacted_projects);
         if !self.is_empty() {
             return Err(Error::from_str(&format!(
                 "Projects with same name already exist: {:?}",
@@ -87,7 +94,7 @@ impl Projects {
             })?;
         }
 
-        self.scan(&filters);
+        self.scan(&filters, scan_impacted_projects);
         debug!("Add {:?} to the projects", &self.iter());
         self.append_to_default_settings_file()
             .and_then(|f| self.vc().add_path(&f))

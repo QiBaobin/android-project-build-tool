@@ -27,6 +27,10 @@ struct Opt {
     )]
     excluded_projects: String,
 
+    /// if don't scan impacted projects
+    #[structopt(long)]
+    not_scan_impacted_projects: bool,
+
     /// the gradel command to run for building, you can give args here too
     #[structopt(short, long, env = "GRADLE_CMD")]
     gradle_cmd: Option<String>,
@@ -146,6 +150,7 @@ fn main() -> Result<()> {
 
     trace!("Arguments: {:?}", opt);
 
+    let scan_impacted_projects = !opt.not_scan_impacted_projects;
     let mut ps = Projects::new(&opt.excluded_projects, opt.gradle_cmd.clone());
     match opt.cmd {
         Command::Build {
@@ -154,7 +159,7 @@ fn main() -> Result<()> {
             mut tasks,
             projects,
             number_of_projects_run_together,
-        } => get_projects(ps, all, after_commit, &projects).build(
+        } => get_projects(ps, all, after_commit, &projects, scan_impacted_projects).build(
             &{
                 if tasks.is_empty() {
                     tasks.push("build".to_string());
@@ -166,7 +171,10 @@ fn main() -> Result<()> {
             opt.verbose,
         ),
         Command::Open { projects, clean } => {
-            ps.scan(&ps.create_filters().with_name_regex(&projects));
+            ps.scan(
+                &ps.create_filters().with_name_regex(&projects),
+                scan_impacted_projects,
+            );
             ps.open(clean)
         }
         Command::Create {
@@ -174,7 +182,7 @@ fn main() -> Result<()> {
             from,
             types,
             excludes,
-        } => ps.create(&path, &from, &types, &excludes),
+        } => ps.create(&path, &from, &types, &excludes, scan_impacted_projects),
         Command::PullRequest {
             summary,
             description,
@@ -235,6 +243,7 @@ fn get_projects(
     all: bool,
     after_commmit: Option<String>,
     name_pattern: &str,
+    scan_impacted_projects: bool,
 ) -> Projects {
     let mut filters = ps.create_filters().with_name_regex(name_pattern);
     if !all {
@@ -250,7 +259,7 @@ fn get_projects(
             filters = filters.since_commit(ps.vc(), &commit);
         }
     }
-    ps.scan(&filters);
+    ps.scan(&filters, scan_impacted_projects);
     ps
 }
 

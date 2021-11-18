@@ -71,7 +71,31 @@ impl Projects {
         ProjectFilters(vec![]).exclude_projects(&self.excluded_projects)
     }
 
-    pub fn scan(&mut self, filters: &ProjectFilters) {
+    pub fn scan(&mut self, filters: &ProjectFilters, scan_impacted_projects: bool) {
+        fn read_dependencies(iter: std::slice::IterMut<(Project, PathBuf, Option<Vec<String>>)>) {
+            let dep_regex = Regex::new(r#"['"]:([^'"]+)"#).unwrap();
+            for mut i in iter {
+                if i.2.is_some() {
+                    continue;
+                }
+
+                let mut dependences = vec![];
+                if let Ok(f) = File::open(&i.1) {
+                    let f = std::io::BufReader::new(f);
+                    for l in f.lines() {
+                        let l = l.unwrap();
+                        if l.trim_start().starts_with("//") || !l.contains("project(") {
+                            continue;
+                        }
+                        if let Some(cap) = dep_regex.captures(&l) {
+                            dependences.push(cap[1].into());
+                        }
+                    }
+                }
+                i.2 = Some(dependences);
+            }
+        }
+
         let root = &self.vc.root();
         let path = root.join("**").join("build.gradle*");
         let build_files = path.to_str().unwrap();
@@ -105,84 +129,63 @@ impl Projects {
 
                     if filters.iter().all(|f| f(&p)) {
                         info!("Found project met criteria: {}", p.name);
-                        matched.push((f.clone(), p));
+                        matched.push((p, f.clone(), None));
                     } else {
-                        others.push((f.clone(), p));
+                        others.push((p, f.clone(), None));
                     }
                 }
-                let required = matched.len();
-                let mut dep_checked = 0;
-                let dep_regex = Regex::new(r#"['"]:([^'"]+)"#).unwrap();
-                while !others.is_empty() {
-                    let mut dependencies: Vec<String> = matched[dep_checked..]
-                        .iter()
-                        .filter_map(|(f, p)| {
-                            File::open(f)
-                                .map(|f| {
-                                    let f = std::io::BufReader::new(f);
-                                    f.lines()
-                                        .filter_map(|l| l.ok())
-                                        .filter(|l| {
-                                            !l.trim_start().starts_with("//")
-                                                && l.contains("project(")
-                                        })
-                                        .filter_map(|l| {
-                                            dep_regex.captures(&l).map(|cap| {
-                                                info!(
-                                                    "Project {} dependency : {}",
-                                                    p.name, &cap[1]
-                                                );
-                                                cap[1].to_string()
-                                            })
-                                        })
-                                })
-                                .ok()
-                        })
-                        .flatten()
-                        .collect();
-                    if dependencies.is_empty() {
-                        break;
-                    }
-                    dep_checked = matched.len();
+                if scan_impacted_projects && !others.is_empty() && !matched.is_empty() {
+                    read_dependencies(others.iter_mut());
 
-                    dependencies.dedup();
-                    let mut i = 0;
-                    while i < others.len() {
-                        let name = &others[i].1.name;
-                        if let Some((j, _)) =
-                            dependencies.iter().enumerate().find(|(_, d)| d == &name)
-                        {
-                            info!("Add dependency project : {}", name);
-                            matched.push(others.swap_remove(i));
-                            dependencies.swap_remove(j);
-                        } else {
-                            i += 1;
+                    let mut searched = 0;
+                    while searched < matched.len() {
+                        let end = matched.len();
+
+                        let mut i = 0;
+                        while i < others.len() {
+                            let m = &others[i];
+                            if m.2.as_ref().map_or(false, |v| {
+                                v.iter().any(|p| {
+                                    matched[searched..end].iter().any(|(r, _, _)| r.name == *p)
+                                })
+                            }) {
+                                info!("Project {} is impacted, added too", &m.0.name);
+                                matched.push(others.swap_remove(i));
+                            } else {
+                                i += 1;
+                            }
                         }
+                        searched = end;
                     }
                 }
                 if !others.is_empty() {
-                    for (fp, p) in others.into_iter() {
-                        if let Ok(f) = File::open(&fp) {
-                            let f = std::io::BufReader::new(f);
-                            for l in f.lines() {
-                                let l = l.unwrap();
-                                if l.trim_start().starts_with("//") || !l.contains("project(") {
-                                    continue;
-                                }
-                                if let Some(cap) = dep_regex.captures(&l) {
-                                    let m = &cap[1];
-                                    if matched[..required].iter().any(|(_, r)| r.name == m) {
-                                        info!("Project {} depends on {}, added too", &p.name, m);
-                                        matched.push((fp, p));
-                                        break;
-                                    }
-                                }
+                    let mut searched = 0;
+                    while searched < matched.len() {
+                        read_dependencies(matched[searched..].iter_mut());
+                        let mut deps = vec![];
+                        for (_, _, v) in matched[searched..].iter() {
+                            for d in v.as_ref().unwrap() {
+                                deps.push(d);
                             }
                         }
+                        searched = matched.len();
+
+                        deps.dedup();
+                        let mut i = 0;
+                        let mut added = vec![];
+                        while i < others.len() {
+                            if deps.iter().any(|d| **d == others[i].0.name) {
+                                info!("Project dependency: {}", others[i].0.name);
+                                added.push(others.swap_remove(i));
+                            } else {
+                                i += 1;
+                            }
+                        }
+                        matched.append(&mut added);
                     }
                 }
 
-                self.projects = matched.into_iter().map(|(_, p)| p).collect();
+                self.projects = matched.into_iter().map(|(p, _, _)| p).collect();
             }
             Err(e) => panic!("Can't detect projects caused by {:?}", e),
         };

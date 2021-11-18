@@ -27,6 +27,7 @@ impl Projects {
             &self
                 .create_filters()
                 .since_commit(self.vc(), &format!("origin/{}", &request.to_branch)),
+            true,
         );
         self.build(&["build".into()], 4, verbose)?;
         info!("Build complete");
