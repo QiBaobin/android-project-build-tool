@@ -13,7 +13,6 @@ pub struct Project {
     pub name: String,
 }
 pub struct Projects {
-    root_project_dir: String,
     excluded_projects: String,
     gradle_cmd: Option<String>,
     projects: Vec<Project>,
@@ -30,27 +29,11 @@ impl Deref for Projects {
 
 impl Projects {
     pub fn new(excluded_projects: &str, gradle_cmd: Option<String>) -> Self {
-        let vc = GitVersionControl::new();
-        let root = vc.root();
-        let root_project_dir =
-            if root.join("settings.gradle").exists() || root.join("settings.gradle.kts").exists() {
-                root.to_str().unwrap().to_string()
-            } else {
-                match glob(root.join("*").join("settings.gradle*").to_str().unwrap()) {
-                    Ok(mut files) => files.next().map_or_else(
-                        || ".".to_string(),
-                        |f| f.unwrap().parent().unwrap().to_str().unwrap().to_string(),
-                    ),
-                    _ => " ".to_string(),
-                }
-            };
-
         Self {
-            root_project_dir,
             excluded_projects: excluded_projects.to_string(),
             gradle_cmd,
             projects: vec![],
-            vc,
+            vc: GitVersionControl::new(),
         }
     }
 
@@ -207,7 +190,7 @@ impl Projects {
     }
 
     pub fn root_project(&self) -> PathBuf {
-        self.vc().root().join(&self.root_project_dir)
+        self.vc().root()
     }
 
     pub fn create_settings(&self, file: &Path) -> Result<()> {
@@ -253,6 +236,7 @@ impl Projects {
         info!("Creating settings file: {:?}", file);
 
         let mut file = File::create(file).map_err(|e| Error::new("Can't create the file", e))?;
+        let _ = write!(file, "// this is auto generated, please don't edit.\n// You can add logic in settings.pre.gradle.kts instead.\n");
         let path = self.root_project().join("settings.pre.gradle.kts");
         if path.exists() {
             read_to_string(path)
