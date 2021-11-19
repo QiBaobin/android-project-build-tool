@@ -28,7 +28,7 @@ struct Opt {
     excluded_projects: String,
 
     /// if don't scan impacted projects
-    #[structopt(long)]
+    #[structopt(long, env = "NO_SCAN_IMPACTED_PROJECTS")]
     not_scan_impacted_projects: bool,
 
     /// the gradel command to run for building, you can give args here too

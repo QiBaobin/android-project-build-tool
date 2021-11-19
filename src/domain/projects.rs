@@ -236,7 +236,7 @@ impl Projects {
         info!("Creating settings file: {:?}", file);
 
         let mut file = File::create(file).map_err(|e| Error::new("Can't create the file", e))?;
-        let _ = write!(file, "// this is auto generated, please don't edit.\n// You can add logic in settings.pre.gradle.kts instead.\n");
+        let _ = write!(file, "// this is auto generated, please don't edit.\n// You can add logic in settings.pre.gradle.kts instead.\n// Ue `abt -v open` can regenerate this file.\n");
         let path = self.root_project().join("settings.pre.gradle.kts");
         if path.exists() {
             read_to_string(path)
