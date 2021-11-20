@@ -56,9 +56,6 @@ enum Command {
         /// the regex that project name shall match
         #[structopt(default_value = ".*", short, long)]
         projects: String,
-        /// how many projects shall run in one gradle process
-        #[structopt(default_value = "1000", short, long)]
-        number_of_projects_run_together: usize,
     },
     /// Control what modules will be included in default project
     Open {
@@ -158,7 +155,6 @@ fn main() -> Result<()> {
             after_commit,
             mut tasks,
             projects,
-            number_of_projects_run_together,
         } => get_projects(ps, all, after_commit, &projects, scan_impacted_projects).build(
             &{
                 if tasks.is_empty() {
@@ -167,7 +163,6 @@ fn main() -> Result<()> {
                 }
                 tasks
             },
-            number_of_projects_run_together,
             opt.verbose,
         ),
         Command::Open { projects, clean } => {

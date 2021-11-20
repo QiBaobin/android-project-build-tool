@@ -29,7 +29,7 @@ impl Projects {
                 .since_commit(self.vc(), &format!("origin/{}", &request.to_branch)),
             true,
         );
-        self.build(&["build".into()], 4, verbose)?;
+        self.build(&["build".into()], verbose)?;
         info!("Build complete");
 
         push_changes(&request.branch_name, self.vc())?;
