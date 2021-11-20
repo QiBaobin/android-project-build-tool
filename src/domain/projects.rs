@@ -82,6 +82,7 @@ impl Projects {
         let filters = &filters.0;
         let files =
             globwalk::GlobWalkerBuilder::from_patterns(root, &["build.gradle", "build.gradle.kts"])
+                .max_depth(1)
                 .max_depth(3)
                 .follow_links(false)
                 .build()
