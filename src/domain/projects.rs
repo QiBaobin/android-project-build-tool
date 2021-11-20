@@ -61,14 +61,12 @@ impl Projects {
             ps.as_mut().into_par_iter().for_each(|mut i| {
                 if i.2.is_none() {
                     let mut dependences = vec![];
-                    if let Ok(f) = File::open(&i.1) {
-                        let f = std::io::BufReader::new(f);
-                        for l in f.lines() {
-                            let l = l.unwrap();
+                    if let Ok(content) = read_to_string(&i.1) {
+                        for l in content.lines() {
                             if l.trim_start().starts_with("//") || !l.contains("project(") {
                                 continue;
                             }
-                            if let Some(cap) = dep_regex.captures(&l) {
+                            if let Some(cap) = dep_regex.captures(l) {
                                 dependences.push(cap[1].into());
                             }
                         }
