@@ -14,7 +14,7 @@ impl Projects {
         scan_impacted_projects: bool,
     ) -> Result<()> {
         let template_path = self.relative_to_root(from);
-        let ref module_types: Vec<_> = if types.trim().is_empty() {
+        let module_types: Vec<_> = if types.trim().is_empty() {
             fs::read_dir(&template_path)
                 .unwrap()
                 .filter_map(|de| de.unwrap().file_name().to_str().map(|s| s.to_string()))
@@ -63,7 +63,7 @@ impl Projects {
                 "^{}$",
                 module_types
                     .iter()
-                    .filter(|t| t.len() > 0)
+                    .filter(|t| !t.is_empty())
                     .map(|t| format!("{}-{}", relative_target, t))
                     .collect::<Vec<_>>()
                     .join("|")
@@ -85,7 +85,7 @@ impl Projects {
         if module_types.len() == 1 {
             self.create_one_module(
                 &template_path.join(&module_types[0]),
-                &target_dir,
+                target_dir,
                 &excludes_files,
             )?;
         } else {
@@ -167,15 +167,11 @@ fn copy_dir(
     };
 
     let tokens = &create_tokens(to);
-    visit_dirs(from_absolate.as_ref(), &|p: &Path| {
+    visit_dirs(from_absolate, &|p: &Path| {
         if p.file_name()
             .map(|f| f.to_str())
             .flatten()
-            .map(|f| {
-                excludes_files
-                    .iter()
-                    .any(|name| name.to_string() == f.to_string())
-            })
+            .map(|f| excludes_files.iter().any(|name| **name == *f))
             .unwrap_or(false)
         {
             trace!("Skip file: {:?}", p);

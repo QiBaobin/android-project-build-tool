@@ -1,6 +1,7 @@
 use super::*;
 use crate::util::vc::GitVersionControl;
-use glob::glob;
+use globwalk;
+use rayon::prelude::*;
 use regex::Regex;
 use std::fs::{read_to_string, File, OpenOptions};
 use std::io::prelude::*;
@@ -55,130 +56,122 @@ impl Projects {
     }
 
     pub fn scan(&mut self, filters: &ProjectFilters, scan_impacted_projects: bool) {
-        fn read_dependencies(iter: std::slice::IterMut<(Project, PathBuf, Option<Vec<String>>)>) {
+        fn read_dependencies(ps: &mut [(Project, PathBuf, Option<Vec<String>>)]) {
             let dep_regex = Regex::new(r#"['"]:([^'"]+)"#).unwrap();
-            for mut i in iter {
-                if i.2.is_some() {
-                    continue;
-                }
-
-                let mut dependences = vec![];
-                if let Ok(f) = File::open(&i.1) {
-                    let f = std::io::BufReader::new(f);
-                    for l in f.lines() {
-                        let l = l.unwrap();
-                        if l.trim_start().starts_with("//") || !l.contains("project(") {
-                            continue;
-                        }
-                        if let Some(cap) = dep_regex.captures(&l) {
-                            dependences.push(cap[1].into());
+            ps.as_mut().into_par_iter().for_each(|mut i| {
+                if i.2.is_none() {
+                    let mut dependences = vec![];
+                    if let Ok(f) = File::open(&i.1) {
+                        let f = std::io::BufReader::new(f);
+                        for l in f.lines() {
+                            let l = l.unwrap();
+                            if l.trim_start().starts_with("//") || !l.contains("project(") {
+                                continue;
+                            }
+                            if let Some(cap) = dep_regex.captures(&l) {
+                                dependences.push(cap[1].into());
+                            }
                         }
                     }
+                    i.2 = Some(dependences);
                 }
-                i.2 = Some(dependences);
-            }
+            });
         }
 
         let root = &self.vc.root();
-        let path = root.join("**").join("build.gradle*");
-        let build_files = path.to_str().unwrap();
         let filters = &filters.0;
-        match glob(build_files) {
-            Ok(files) => {
-                let mut matched = vec![];
-                let mut others = vec![];
-                for f in files.filter_map(|f| {
-                    f.map_or_else(
-                        |e| {
-                            warn!("Io error {:?}", e);
-                            None
-                        },
-                        Some,
-                    )
-                }) {
-                    let project_dir = f.parent().unwrap();
-                    let p = Project {
-                        path: project_dir.to_path_buf(),
-                        name: project_dir
-                            .strip_prefix(root)
-                            .unwrap()
-                            .iter()
-                            .map(|os_str| os_str.to_str().unwrap())
-                            .collect::<Vec<_>>()
-                            .join(":")
-                            .replace(":android", "-android")
-                            .replace(":domain", "-domain"),
-                    };
+        let files =
+            globwalk::GlobWalkerBuilder::from_patterns(root, &["build.gradle", "build.gradle.kts"])
+                .max_depth(3)
+                .follow_links(false)
+                .build()
+                .unwrap()
+                .into_iter()
+                .filter_map(std::result::Result::ok);
 
-                    if filters.iter().all(|f| f(&p)) {
-                        info!("Found project met criteria: {}", p.name);
-                        matched.push((p, f.clone(), None));
-                    } else {
-                        others.push((p, f.clone(), None));
-                    }
-                }
-                if scan_impacted_projects && !others.is_empty() && !matched.is_empty() {
-                    read_dependencies(others.iter_mut());
+        let mut matched = vec![];
+        let mut others = vec![];
+        for f in files {
+            let f = f.path();
+            let project_dir = f.parent().unwrap();
+            let p = Project {
+                path: project_dir.to_path_buf(),
+                name: project_dir
+                    .strip_prefix(root)
+                    .unwrap()
+                    .iter()
+                    .map(|os_str| os_str.to_str().unwrap())
+                    .collect::<Vec<_>>()
+                    .join(":")
+                    .replace(":android", "-android")
+                    .replace(":domain", "-domain"),
+            };
 
-                    let exclude_rule = self.create_filters().0;
-                    let mut searched = 0;
-                    while searched < matched.len() {
-                        let end = matched.len();
-
-                        let mut i = 0;
-                        while i < others.len() {
-                            let m = &others[i];
-                            if m.2.as_ref().map_or(false, |v| {
-                                v.iter().any(|p| {
-                                    matched[searched..end].iter().any(|(r, _, _)| r.name == *p)
-                                })
-                            }) {
-                                let name = &m.0.name;
-                                if exclude_rule.iter().all(|r| r(&m.0)) {
-                                    info!("Project {} is impacted, added too", name);
-                                    matched.push(others.swap_remove(i));
-                                } else {
-                                    info!("Project {} is impacted, but it's excluded", name);
-                                    i += 1;
-                                }
-                            } else {
-                                i += 1;
-                            }
-                        }
-                        searched = end;
-                    }
-                }
-                if !others.is_empty() {
-                    let mut searched = 0;
-                    while searched < matched.len() {
-                        read_dependencies(matched[searched..].iter_mut());
-                        let mut deps = vec![];
-                        for (_, _, v) in matched[searched..].iter() {
-                            for d in v.as_ref().unwrap() {
-                                deps.push(d);
-                            }
-                        }
-                        searched = matched.len();
-
-                        deps.dedup();
-                        let mut i = 0;
-                        let mut added = vec![];
-                        while i < others.len() {
-                            if deps.iter().any(|d| **d == others[i].0.name) {
-                                info!("Project dependency: {}", others[i].0.name);
-                                added.push(others.swap_remove(i));
-                            } else {
-                                i += 1;
-                            }
-                        }
-                        matched.append(&mut added);
-                    }
-                }
-
-                self.projects = matched.into_iter().map(|(p, _, _)| p).collect();
+            if filters.iter().all(|f| f(&p)) {
+                info!("Found project met criteria: {}", p.name);
+                matched.push((p, f.to_path_buf(), None));
+            } else {
+                others.push((p, f.to_path_buf(), None));
             }
-            Err(e) => panic!("Can't detect projects caused by {:?}", e),
-        };
+        }
+        if scan_impacted_projects && !others.is_empty() && !matched.is_empty() {
+            read_dependencies(&mut others);
+
+            let exclude_rule = self.create_filters().0;
+            let mut searched = 0;
+            while searched < matched.len() {
+                let end = matched.len();
+
+                let mut i = 0;
+                while i < others.len() {
+                    let m = &others[i];
+                    if m.2.as_ref().map_or(false, |v| {
+                        v.iter()
+                            .any(|p| matched[searched..end].iter().any(|(r, _, _)| r.name == *p))
+                    }) {
+                        let name = &m.0.name;
+                        if exclude_rule.iter().all(|r| r(&m.0)) {
+                            info!("Project {} is impacted, added too", name);
+                            matched.push(others.swap_remove(i));
+                        } else {
+                            info!("Project {} is impacted, but it's excluded", name);
+                            i += 1;
+                        }
+                    } else {
+                        i += 1;
+                    }
+                }
+                searched = end;
+            }
+        }
+        if !others.is_empty() {
+            let mut searched = 0;
+            while searched < matched.len() {
+                read_dependencies(&mut matched[searched..]);
+                let mut deps = vec![];
+                for (_, _, v) in matched[searched..].iter() {
+                    for d in v.as_ref().unwrap() {
+                        deps.push(d);
+                    }
+                }
+                searched = matched.len();
+
+                deps.dedup();
+                let mut i = 0;
+                let mut added = vec![];
+                while i < others.len() {
+                    if deps.iter().any(|d| **d == others[i].0.name) {
+                        info!("Project dependency: {}", others[i].0.name);
+                        added.push(others.swap_remove(i));
+                    } else {
+                        i += 1;
+                    }
+                }
+                matched.append(&mut added);
+            }
+        }
+
+        self.projects = matched.into_iter().map(|(p, _, _)| p).collect();
     }
 
     pub fn vc(&self) -> &dyn VersionControl {
@@ -276,7 +269,7 @@ impl Projects {
                     "include(\":{}\")\nproject(\":{}\").projectDir = file(\"{}\")\n\n",
                     &p.name,
                     &p.name,
-                    relative_to(&p.path.as_path(), &self.root_project()).display()
+                    relative_to(p.path.as_path(), &self.root_project()).display()
                 )
             })
             .map_err(|e| Error::new(&format!("Can't write to {:?}", &file), e))

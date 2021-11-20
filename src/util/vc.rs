@@ -72,7 +72,7 @@ impl VersionControl for GitVersionControl {
                         r.id(),
                         self.repository.revparse_single("HEAD").unwrap().id(),
                     )
-                    .unwrap_or(r.id())
+                    .unwrap_or_else(|_| r.id())
             })
             .or_else(|_| {
                 self.repository

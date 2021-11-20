@@ -7,7 +7,7 @@ pub fn run_sh(command: &str) -> Result<Vec<String>> {
     trace!("Run shell command: {}", &command);
 
     Command::new("sh")
-        .args(&["-c", &command])
+        .args(&["-c", command])
         .output()
         .map(|o| {
             str::from_utf8(&o.stdout)

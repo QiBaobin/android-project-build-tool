@@ -17,7 +17,7 @@ pub fn submit_pull_request(request: &Request, push_url: &str, auth: &Auth) -> Re
     let server = get_stash_server_info(push_url)?;
 
     info!("Creating the pull request");
-    let json_request = create_stash_rest_api_pr_request(&request, &server);
+    let json_request = create_stash_rest_api_pr_request(request, &server);
     let url = get_stash_rest_api_pr_url(&server);
     trace!("Sending request to {}\n {}", &url, json_request);
 

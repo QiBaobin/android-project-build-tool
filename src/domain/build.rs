@@ -10,7 +10,7 @@ impl Projects {
         number_of_project_run_together: usize,
         verbose: usize,
     ) -> Result<()> {
-        let jobs: Vec<_> = self
+        let jobs = self
             .chunks(number_of_project_run_together)
             .enumerate()
             .map(|(i, p)| {
@@ -38,10 +38,8 @@ impl Projects {
                                 .ok()
                         },
                     )
-            })
-            .collect();
+            });
         let all_passed = jobs
-            .into_iter()
             .map(|r| {
                 r.map(|mut j| {
                     j.wait().map_or_else(
