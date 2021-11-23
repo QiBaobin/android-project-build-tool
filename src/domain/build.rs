@@ -9,20 +9,25 @@ impl Projects {
         trace!("Adding projects:");
         self.iter().for_each(|l| trace!("{:?}", l));
 
-        self.create_settings_for_subprojects(self.iter(), &settings_file)?;
-        self.build_projects(&settings_file, gradle_commands, verbose)
-            .map_err(|e| Error::new("Can't start build process", e))?
-            .wait()
-            .map_or_else(
-                |e| Err(Error::new("Build process stop failed", e)),
-                |s| {
-                    if s.success() {
-                        Ok(())
-                    } else {
-                        Err(Error::from_str("Build process failed"))
-                    }
-                },
-            )
+        if self.is_empty() {
+            info!("No project need to run");
+            Ok(())
+        } else {
+            self.create_settings_for_subprojects(self.iter(), &settings_file)?;
+            self.build_projects(&settings_file, gradle_commands, verbose)
+                .map_err(|e| Error::new("Can't start build process", e))?
+                .wait()
+                .map_or_else(
+                    |e| Err(Error::new("Build process stop failed", e)),
+                    |s| {
+                        if s.success() {
+                            Ok(())
+                        } else {
+                            Err(Error::from_str("Build process failed"))
+                        }
+                    },
+                )
+        }
     }
 
     fn build_projects(
@@ -31,7 +36,7 @@ impl Projects {
         gradle_commands: &[String],
         verbose: usize,
     ) -> std::io::Result<std::process::Child> {
-        let filtered_commands: Vec<_> = gradle_commands
+        let mut filtered_commands: Vec<_> = gradle_commands
             .iter()
             .filter_map(|c| {
                 if !c.contains(':') {
@@ -49,6 +54,9 @@ impl Projects {
                 }
             })
             .collect();
+        if filtered_commands.is_empty() {
+            filtered_commands.push("projects");
+        }
 
         info!(
             "Start run gradle {} on {}",

@@ -304,18 +304,36 @@ impl ProjectFilters {
     pub fn since_commit(mut self, vc: &dyn VersionControl, hash: &str) -> Self {
         let root = vc.root();
         match vc.diff_files(hash) {
-            Ok(files) => self.0.push(Box::new(move |p| {
-                files.iter().any(|f| {
-                    let relative = if p.path.is_absolute() {
-                        p.path.strip_prefix(&root).unwrap_or(&p.path)
-                    } else {
-                        &p.path
-                    };
+            Ok(files) => {
+                if !read_to_string(root.join("build-all.triggers"))
+                    .map(|global_settings| {
+                        global_settings.lines().any(|f| {
+                            let found = files.iter().any(|d| d == f);
+                            if found {
+                                info!(
+                                    "Found a trigger file {} to build all, skip change detection",
+                                    f
+                                );
+                            }
+                            found
+                        })
+                    })
+                    .unwrap_or(false)
+                {
+                    self.0.push(Box::new(move |p| {
+                        files.iter().any(|f| {
+                            let relative = if p.path.is_absolute() {
+                                p.path.strip_prefix(&root).unwrap_or(&p.path)
+                            } else {
+                                &p.path
+                            };
 
-                    Path::new(f).strip_prefix(relative).is_ok()
-                        || p.name.starts_with(f.trim_end_matches('/'))
-                })
-            })),
+                            Path::new(f).strip_prefix(relative).is_ok()
+                                || p.name.starts_with(f.trim_end_matches('/'))
+                        })
+                    }))
+                }
+            }
             Err(e) => {
                 warn!(
                     "Can't get diff files with commit {} caused by {:?}",
