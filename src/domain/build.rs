@@ -15,7 +15,13 @@ impl Projects {
             .wait()
             .map_or_else(
                 |e| Err(Error::new("Build process stop failed", e)),
-                |_| Ok(()),
+                |s| {
+                    if s.success() {
+                        Ok(())
+                    } else {
+                        Err(Error::from_str("Build process failed"))
+                    }
+                },
             )
     }
 
@@ -25,9 +31,28 @@ impl Projects {
         gradle_commands: &[String],
         verbose: usize,
     ) -> std::io::Result<std::process::Child> {
+        let filtered_commands: Vec<_> = gradle_commands
+            .iter()
+            .filter_map(|c| {
+                if !c.contains(':') {
+                    Some(c.as_str())
+                } else {
+                    let mut names = c.rsplitn(2, ':');
+                    names.next();
+                    let project_name = names.next().unwrap();
+                    if self.iter().any(|p| p.name == project_name) {
+                        Some(c.as_str())
+                    } else {
+                        info!("Project {} not found, so skip command {}", project_name, c);
+                        None
+                    }
+                }
+            })
+            .collect();
+
         info!(
             "Start run gradle {} on {}",
-            gradle_commands.join(" "),
+            filtered_commands.join(" "),
             &settings_file.to_str().unwrap()
         );
 
@@ -43,6 +68,6 @@ impl Projects {
         .args(&["-c", settings_file.to_str().unwrap()])
         .args(&gradle_cmd[1..]);
 
-        cmd.args(gradle_commands).spawn()
+        cmd.args(filtered_commands).spawn()
     }
 }
