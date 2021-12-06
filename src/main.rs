@@ -27,6 +27,11 @@ struct Opt {
     )]
     excluded_projects: String,
 
+    /// the project paths (outside of the root_project_dir) we want to include in this project when building
+    /// if we need more than one path,  seperate them by space
+    #[structopt(default_value = "", short, long, env = "INCLUDE_PROJECTS")]
+    include_projects: String,
+
     /// if don't scan impacted projects
     #[structopt(long, env = "NO_SCAN_IMPACTED_PROJECTS")]
     not_scan_impacted_projects: bool,
@@ -148,7 +153,11 @@ fn main() -> Result<()> {
     trace!("Arguments: {:?}", opt);
 
     let scan_impacted_projects = !opt.not_scan_impacted_projects;
-    let mut ps = Projects::new(&opt.excluded_projects, opt.gradle_cmd.clone());
+    let mut ps = Projects::new(
+        &opt.excluded_projects,
+        &opt.include_projects,
+        opt.gradle_cmd.clone(),
+    );
     match opt.cmd {
         Command::Build {
             all,
