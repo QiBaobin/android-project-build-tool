@@ -307,34 +307,35 @@ impl ProjectFilters {
         let root = vc.root();
         match vc.diff_files(hash) {
             Ok(files) => {
-                if !read_to_string(root.join("build-all.triggers"))
-                    .map(|global_settings| {
-                        global_settings.lines().any(|f| {
-                            let found = files.iter().any(|d| d == f);
-                            if found {
-                                info!(
-                                    "Found a trigger file {} to build all, skip change detection",
-                                    f
-                                );
-                            }
-                            found
-                        })
-                    })
-                    .unwrap_or(false)
-                {
-                    self.0.push(Box::new(move |p| {
-                        files.iter().any(|f| {
-                            let relative = if p.path.is_absolute() {
-                                p.path.strip_prefix(&root).unwrap_or(&p.path)
-                            } else {
-                                &p.path
-                            };
-
-                            Path::new(f).strip_prefix(relative).is_ok()
-                                || p.name.starts_with(f.trim_end_matches('/'))
-                        })
-                    }))
+                let mut triggers = std::collections::HashMap::new();
+                if let Ok(file) = read_to_string(root.join("build.triggers")) {
+                    for l in file.lines() {
+                        let fields: Vec<_> = l.split(":").collect();
+                        if fields.len() == 2 {
+                            triggers.insert(
+                                fields[0].to_string(),
+                                fields[1]
+                                    .split(",")
+                                    .map(|s| s.to_string())
+                                    .collect::<Vec<_>>(),
+                            );
+                        }
+                    }
                 }
+                self.0.push(Box::new(move |p| {
+                    let relative = if p.path.is_absolute() {
+                        p.path.strip_prefix(&root).unwrap_or(&p.path)
+                    } else {
+                        &p.path
+                    };
+                    let empty = vec![];
+                    let triggers = triggers.get(relative.to_str().unwrap()).unwrap_or(&empty);
+                    files.iter().any(|f| {
+                        Path::new(f).strip_prefix(relative).is_ok()
+                            || p.name.starts_with(f.trim_end_matches('/'))
+                            || triggers.contains(f)
+                    })
+                }))
             }
             Err(e) => {
                 warn!(
