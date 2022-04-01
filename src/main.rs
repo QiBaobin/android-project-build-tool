@@ -61,6 +61,9 @@ enum Command {
         /// the regex that project name shall match
         #[structopt(default_value = ".*", short, long)]
         projects: String,
+        /// the task to run
+        #[structopt(subcommand)]
+        gradle: GradleCommand,
     },
     /// Control what modules will be included in default project
     Open {
@@ -136,6 +139,12 @@ enum Command {
         password: Option<String>,
     },
 }
+#[derive(StructOpt, Debug)]
+#[structopt(about = "the build commands")]
+enum GradleCommand {
+    #[structopt(external_subcommand)]
+    Other(Vec<String>),
+}
 
 fn main() -> Result<()> {
     openssl_probe::init_ssl_cert_env_vars();
@@ -164,8 +173,16 @@ fn main() -> Result<()> {
             after_commit,
             mut tasks,
             projects,
+            gradle,
         } => get_projects(ps, all, after_commit, &projects, scan_impacted_projects).build(
             &{
+                match gradle {
+                    GradleCommand::Other(cmds) => {
+                        for c in cmds {
+                            tasks.push(c);
+                        }
+                    }
+                }
                 if tasks.is_empty() {
                     tasks.push("build".to_string());
                     tasks.push("publishModule".to_string());
