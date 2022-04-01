@@ -63,7 +63,7 @@ enum Command {
         projects: String,
         /// the task to run
         #[structopt(subcommand)]
-        gradle: GradleCommand,
+        gradle: Option<GradleCommand>,
     },
     /// Control what modules will be included in default project
     Open {
@@ -177,11 +177,12 @@ fn main() -> Result<()> {
         } => get_projects(ps, all, after_commit, &projects, scan_impacted_projects).build(
             &{
                 match gradle {
-                    GradleCommand::Other(cmds) => {
+                    Some(GradleCommand::Other(cmds)) => {
                         for c in cmds {
                             tasks.push(c);
                         }
                     }
+                    None => {},
                 }
                 if tasks.is_empty() {
                     tasks.push("build".to_string());
