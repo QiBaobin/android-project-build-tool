@@ -55,9 +55,6 @@ enum Command {
         /// the compare commit to test if modules are changed, like head
         #[structopt(short = "c", long)]
         after_commit: Option<String>,
-        /// the task to run
-        #[structopt(short, long)]
-        tasks: Vec<String>,
         /// the regex that project name shall match
         #[structopt(default_value = ".*", short, long)]
         projects: String,
@@ -171,24 +168,14 @@ fn main() -> Result<()> {
         Command::Build {
             all,
             after_commit,
-            mut tasks,
             projects,
             gradle,
         } => get_projects(ps, all, after_commit, &projects, scan_impacted_projects).build(
             &{
                 match gradle {
-                    Some(GradleCommand::Other(cmds)) => {
-                        for c in cmds {
-                            tasks.push(c);
-                        }
-                    }
-                    None => {},
+                    Some(GradleCommand::Other(cmds)) => cmds,
+                    None => vec!["build".to_string(), "publishModule".to_string()],
                 }
-                if tasks.is_empty() {
-                    tasks.push("build".to_string());
-                    tasks.push("publishModule".to_string());
-                }
-                tasks
             },
             opt.verbose,
         ),
