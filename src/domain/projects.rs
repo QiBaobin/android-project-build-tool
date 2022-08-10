@@ -307,18 +307,20 @@ impl ProjectFilters {
         let root = vc.root();
         match vc.diff_files(hash) {
             Ok(files) => {
-                let mut triggers = std::collections::HashMap::new();
+                let mut triggers = vec![];
                 if let Ok(file) = read_to_string(root.join("build.triggers")) {
                     for l in file.lines() {
-                        let fields: Vec<_> = l.split(":").collect();
+                        let fields: Vec<_> = l.split(':').collect();
                         if fields.len() == 2 {
-                            triggers.insert(
-                                fields[0].to_string(),
-                                fields[1]
-                                    .split(",")
-                                    .map(|s| s.to_string())
-                                    .collect::<Vec<_>>(),
-                            );
+                            if let Ok(regex) = Regex::new(fields[0]) {
+                                triggers.push((
+                                    regex,
+                                    fields[1]
+                                        .split(',')
+                                        .map(|s| s.to_string())
+                                        .collect::<Vec<_>>(),
+                                ));
+                            }
                         }
                     }
                 }
@@ -328,12 +330,25 @@ impl ProjectFilters {
                     } else {
                         &p.path
                     };
-                    let empty = vec![];
-                    let triggers = triggers.get(relative.to_str().unwrap()).unwrap_or(&empty);
+                    let triggers: Vec<_> = triggers
+                        .iter()
+                        .filter_map(|(regex, v)| {
+                            relative.to_str().and_then(|p| {
+                                if regex.is_match(p) {
+                                    Some(v)
+                                } else {
+                                    None
+                                }
+                            })
+                        })
+                        .flatten()
+                        .collect();
                     files.iter().any(|f| {
                         Path::new(f).strip_prefix(relative).is_ok()
                             || p.name.starts_with(f.trim_end_matches('/'))
-                            || triggers.contains(f)
+                            || triggers
+                                .iter()
+                                .any(|fp| fp.starts_with(f.trim_end_matches('/')))
                     })
                 }))
             }

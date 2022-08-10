@@ -145,7 +145,7 @@ fn copy_dir(
     );
 
     let to = to_absolute.strip_prefix(root).unwrap().to_str().unwrap();
-    let package_path = package_name(to).replace(".", "/");
+    let package_path = package_name(to).replace('.', "/");
     debug!("Package path is {}", &package_path);
 
     let feature_name = feature_name(to);
@@ -169,10 +169,8 @@ fn copy_dir(
     let tokens = &create_tokens(to);
     visit_dirs(from_absolate, &|p: &Path| {
         if p.file_name()
-            .map(|f| f.to_str())
-            .flatten()
-            .map(|f| excludes_files.iter().any(|name| **name == *f))
-            .unwrap_or(false)
+            .and_then(|f| f.to_str())
+            .map_or(false, |f| excludes_files.iter().any(|name| **name == *f))
         {
             trace!("Skip file: {:?}", p);
             Ok(())
@@ -229,7 +227,7 @@ fn create_tokens(dir: &str) -> HashMap<String, String> {
 }
 
 fn feature_name(dir: &str) -> String {
-    dir.replace("/", "-")
+    dir.replace('/', "-")
         .split('-')
         .map(|w| {
             let (f, r) = w.split_at(1);
@@ -242,7 +240,7 @@ fn feature_name(dir: &str) -> String {
 fn package_name(dir: &str) -> String {
     dir.to_ascii_lowercase()
         .replace("feature-", "feature.")
-        .replace("-", "")
-        .replace("/", ".")
+        .replace('-', "")
+        .replace('/', ".")
         .replace(".domain", "")
 }

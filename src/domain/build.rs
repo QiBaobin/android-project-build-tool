@@ -44,7 +44,7 @@ impl Projects {
                 } else {
                     let mut names = c.rsplitn(2, ':');
                     names.next();
-                    let project_name = names.next().unwrap().trim_start_matches(":");
+                    let project_name = names.next().unwrap().trim_start_matches(':');
                     if self.iter().any(|p| p.name == project_name) {
                         Some(c.as_str())
                     } else {
