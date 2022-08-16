@@ -58,6 +58,9 @@ enum Command {
         /// the regex that project name shall match
         #[structopt(default_value = ".*", short, long)]
         projects: String,
+        /// the file contains external triggers
+        #[structopt(long, env = "TRIGGERS_FILE")]
+        triggers_file: Option<String>,
         /// the task to run
         #[structopt(subcommand)]
         gradle: Option<GradleCommand>,
@@ -116,6 +119,9 @@ enum Command {
         /// if open the pull request in the default web browser
         #[structopt(short, long)]
         open: bool,
+        /// the file contains external triggers
+        #[structopt(long, env = "TRIGGERS_FILE")]
+        triggers_file: Option<String>,
     },
     Users {
         /// return only users, whose username, name or email address contain the filter value
@@ -169,8 +175,17 @@ fn main() -> Result<()> {
             all,
             after_commit,
             projects,
+            triggers_file,
             gradle,
-        } => get_projects(ps, all, after_commit, &projects, scan_impacted_projects).build(
+        } => get_projects(
+            ps,
+            all,
+            after_commit,
+            &projects,
+            scan_impacted_projects,
+            triggers_file,
+        )
+        .build(
             &{
                 match gradle {
                     Some(GradleCommand::Other(cmds)) => cmds,
@@ -202,6 +217,7 @@ fn main() -> Result<()> {
             reviewers,
             reviewer_group,
             open,
+            triggers_file,
         } => {
             let mut all_reviewers = reviewers;
             let mut reviewer_group = reviewer_group;
@@ -230,6 +246,7 @@ fn main() -> Result<()> {
                 Auth { user, password },
                 opt.verbose,
                 open,
+                triggers_file,
             )
         }
         Command::Users {
@@ -253,6 +270,7 @@ fn get_projects(
     after_commmit: Option<String>,
     name_pattern: &str,
     scan_impacted_projects: bool,
+    triggers_file: Option<String>,
 ) -> Projects {
     let mut filters = ps.create_filters().with_name_regex(name_pattern);
     if !all {
@@ -265,7 +283,7 @@ fn get_projects(
                 })
                 .ok()
         }) {
-            filters = filters.since_commit(ps.vc(), &commit);
+            filters = filters.since_commit(ps.vc(), &commit, triggers_file.as_deref());
         }
     }
     ps.scan(&filters, scan_impacted_projects);

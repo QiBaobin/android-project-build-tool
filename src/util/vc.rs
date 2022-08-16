@@ -90,7 +90,7 @@ impl VersionControl for GitVersionControl {
         self.repository
             .diff_tree_to_workdir(
                 Some(&tree),
-                Some(DiffOptions::new().include_untracked(true)),
+                Some(DiffOptions::new().include_untracked(false)),
             )
             .map_err(|e| {
                 Error::new(

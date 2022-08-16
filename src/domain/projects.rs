@@ -277,7 +277,8 @@ impl Projects {
     }
 }
 
-pub struct ProjectFilters(Vec<Box<dyn Fn(&Project) -> bool>>);
+type ProjectFilter = Box<dyn Fn(&Project) -> bool>;
+pub struct ProjectFilters(Vec<ProjectFilter>);
 impl ProjectFilters {
     pub fn with_name_regex(mut self, pattern: &str) -> Self {
         match Regex::new(pattern) {
@@ -303,23 +304,30 @@ impl ProjectFilters {
         self
     }
 
-    pub fn since_commit(mut self, vc: &dyn VersionControl, hash: &str) -> Self {
+    pub fn since_commit(
+        mut self,
+        vc: &dyn VersionControl,
+        hash: &str,
+        external_triggers_file: Option<&str>,
+    ) -> Self {
         let root = vc.root();
         match vc.diff_files(hash) {
             Ok(files) => {
                 let mut triggers = vec![];
-                if let Ok(file) = read_to_string(root.join("build.triggers")) {
-                    for l in file.lines() {
-                        let fields: Vec<_> = l.split(':').collect();
-                        if fields.len() == 2 {
-                            if let Ok(regex) = Regex::new(fields[0]) {
-                                triggers.push((
-                                    regex,
-                                    fields[1]
-                                        .split(',')
-                                        .map(|s| s.to_string())
-                                        .collect::<Vec<_>>(),
-                                ));
+                if let Some(file) = external_triggers_file {
+                    if let Ok(file) = read_to_string(root.join(file)) {
+                        for l in file.lines() {
+                            let fields: Vec<_> = l.split(':').collect();
+                            if fields.len() == 2 {
+                                if let Ok(regex) = Regex::new(fields[0]) {
+                                    triggers.push((
+                                        regex,
+                                        fields[1]
+                                            .split(',')
+                                            .map(|s| s.to_string())
+                                            .collect::<Vec<_>>(),
+                                    ));
+                                }
                             }
                         }
                     }

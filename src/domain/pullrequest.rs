@@ -18,15 +18,18 @@ impl Projects {
         auth: Auth,
         verbose: usize,
         open: bool,
+        triggers_file: Option<String>,
     ) -> Result<()> {
         check_request(&mut request, self.vc())?;
         check_conflicts(&request.to_branch, self.vc())?;
 
         info!("Build modules");
         self.scan(
-            &self
-                .create_filters()
-                .since_commit(self.vc(), &format!("origin/{}", &request.to_branch)),
+            &self.create_filters().since_commit(
+                self.vc(),
+                &format!("origin/{}", &request.to_branch),
+                triggers_file.as_deref(),
+            ),
             true,
         );
         self.build(&["build".into()], verbose)?;
