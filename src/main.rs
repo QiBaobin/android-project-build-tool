@@ -40,6 +40,10 @@ struct Opt {
     #[structopt(short, long, env = "GRADLE_CMD")]
     gradle_cmd: Option<String>,
 
+    /// the project root
+    #[structopt(short, long)]
+    root: Option<String>,
+
     /// the command we wan to run
     #[structopt(subcommand)] // Note that we mark a field as a subcommand
     cmd: Command,
@@ -169,6 +173,7 @@ fn main() -> Result<()> {
         &opt.excluded_projects,
         &opt.include_projects,
         opt.gradle_cmd.clone(),
+        opt.root.clone(),
     );
     match opt.cmd {
         Command::Build {

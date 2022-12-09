@@ -90,7 +90,7 @@ impl VersionControl for GitVersionControl {
         self.repository
             .diff_tree_to_workdir(
                 Some(&tree),
-                Some(DiffOptions::new().include_untracked(false)),
+                Some(DiffOptions::new().include_untracked(true)),
             )
             .map_err(|e| {
                 Error::new(
@@ -131,7 +131,7 @@ impl VersionControl for GitVersionControl {
             |e| Err(Error::new("Can't get the index of the repo", e)),
             |mut i| {
                 i.add_all(
-                    &[relative_path, &format!("{}/*", relative_path)],
+                    [relative_path, &format!("{}/*", relative_path)],
                     IndexAddOption::DEFAULT,
                     None,
                 )

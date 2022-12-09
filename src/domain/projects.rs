@@ -18,6 +18,7 @@ pub struct Projects {
     include_projects: String,
     gradle_cmd: Option<String>,
     projects: Vec<Project>,
+    root: PathBuf,
     vc: GitVersionControl,
 }
 
@@ -34,13 +35,17 @@ impl Projects {
         excluded_projects: &str,
         include_projects: &str,
         gradle_cmd: Option<String>,
+        root_dir: Option<String>,
     ) -> Self {
+        let vc = GitVersionControl::new();
+        let root = root_dir.map_or_else(|| vc.root(), PathBuf::from);
         Self {
             excluded_projects: excluded_projects.to_string(),
             include_projects: include_projects.to_string(),
             gradle_cmd,
+            vc,
+            root,
             projects: vec![],
-            vc: GitVersionControl::new(),
         }
     }
 
@@ -78,11 +83,11 @@ impl Projects {
     }
 
     pub fn root(&self) -> PathBuf {
-        self.vc.root()
+        self.vc().root()
     }
 
     pub fn root_project(&self) -> PathBuf {
-        self.vc().root()
+        self.root.clone()
     }
 
     pub fn create_settings(&self, file: &Path) -> Result<()> {

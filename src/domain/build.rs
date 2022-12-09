@@ -73,7 +73,7 @@ impl Projects {
             2 => cmd.arg("-i"),
             _ => cmd.arg("-d"),
         }
-        .args(&["-c", settings_file.to_str().unwrap()])
+        .args(["-c", settings_file.to_str().unwrap()])
         .args(&gradle_cmd[1..]);
 
         cmd.args(filtered_commands).spawn()
