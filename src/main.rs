@@ -194,7 +194,7 @@ fn main() -> Result<()> {
             &{
                 match gradle {
                     Some(GradleCommand::Other(cmds)) => cmds,
-                    None => vec!["build".to_string(), "publishModule".to_string()],
+                    None => vec!["build".to_string()],
                 }
             },
             opt.verbose,
