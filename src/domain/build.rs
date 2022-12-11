@@ -4,16 +4,32 @@ use super::*;
 use std::path::Path;
 
 impl Projects {
-    pub fn build(&self, gradle_commands: &[String], verbose: usize) -> Result<()> {
-        let settings_file = self.root_project().join("build.settings.gradle.kts");
-        trace!("Adding projects:");
-        self.iter().for_each(|l| trace!("{:?}", l));
-
+    pub fn build(
+        &self,
+        gradle_commands: &[String],
+        threshold: Option<usize>,
+        verbose: usize,
+    ) -> Result<()> {
         if self.is_empty() {
             info!("No project need to run");
-            Ok(())
-        } else {
-            self.create_settings_for_subprojects(self.iter(), &settings_file)?;
+            return Ok(());
+        }
+
+        let settings_file = self.root_project().join("build.settings.gradle.kts");
+        let threshold = threshold.unwrap_or(self.len());
+        for iter in 0..((self.len() + threshold.saturating_sub(1)) / threshold) {
+            trace!("Adding projects:");
+
+            self.create_settings_for_subprojects(
+                self.iter()
+                    .skip(iter * threshold)
+                    .take(threshold)
+                    .map(|project| {
+                        trace!("{:?}", project);
+                        project
+                    }),
+                &settings_file,
+            )?;
             self.build_projects(&settings_file, gradle_commands, verbose)
                 .map_err(|e| Error::new("Can't start build process", e))?
                 .wait()
@@ -26,8 +42,10 @@ impl Projects {
                             Err(Error::from_str("Build process failed"))
                         }
                     },
-                )
+                )?;
         }
+
+        Ok(())
     }
 
     fn build_projects(

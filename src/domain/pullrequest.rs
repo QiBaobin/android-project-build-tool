@@ -32,7 +32,7 @@ impl Projects {
             ),
             true,
         );
-        self.build(&["build".into()], verbose)?;
+        self.build(&["build".into()], None, verbose)?;
         info!("Build complete");
 
         push_changes(&request.branch_name, self.vc())?;

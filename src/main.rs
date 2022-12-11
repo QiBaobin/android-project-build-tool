@@ -65,6 +65,9 @@ enum Command {
         /// the file contains external triggers
         #[structopt(long, env = "TRIGGERS_FILE")]
         triggers_file: Option<String>,
+        /// the file contains external triggers
+        #[structopt(long, env = "ABT_BUILD_THRESHOLD")]
+        threshold: Option<usize>,
         /// the task to run
         #[structopt(subcommand)]
         gradle: Option<GradleCommand>,
@@ -181,6 +184,7 @@ fn main() -> Result<()> {
             after_commit,
             projects,
             triggers_file,
+            threshold,
             gradle,
         } => get_projects(
             ps,
@@ -197,6 +201,7 @@ fn main() -> Result<()> {
                     None => vec!["build".to_string()],
                 }
             },
+            threshold,
             opt.verbose,
         ),
         Command::Open { projects, clean } => {
