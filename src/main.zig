@@ -11,9 +11,6 @@ const StringHashMap = std.StringHashMap;
 const warn = std.log.warn;
 const debug = std.log.debug;
 const info = std.log.info;
-const re = @cImport(@cInclude("regez.h"));
-const REGEX_T_ALIGNOF = re.sizeof_regex_t;
-const REGEX_T_SIZEOF = re.alignof_regex_t;
 
 const usage =
     \\Usage: abt [options] [--] [gradle command]
@@ -36,12 +33,8 @@ const usage =
     \\
 ;
 
-fn nextOrFatal(it: *std.process.ArgIterator, cur: []const u8) []const u8 {
-    if (it.next()) |v| {
-        return v[0 .. v.len - 1];
-    } else {
-        fatal("expected parameter after {s}", .{cur});
-    }
+fn nextOrFatal(it: *std.process.ArgIterator, cur: []const u8) [:0]const u8 {
+    return it.next() orelse fatal("expected parameter after {s}", .{cur});
 }
 pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -99,7 +92,7 @@ pub fn main() !void {
     return build(allocator, &options);
 }
 fn build(allocator: Allocator, options: *Options) !void {
-    const vc_root = exec(allocator, &[_][]const u8{
+    const output = exec(allocator, &[_][]const u8{
         "git",
         "rev-parse",
         "--show-toplevel",
@@ -107,13 +100,15 @@ fn build(allocator: Allocator, options: *Options) !void {
         warn("Find git root fail: {}", .{e});
         break :blk null;
     };
-    if (vc_root) |root| {
-        var dir = root[0..mem.indexOfScalar(u8, root, '\n').?];
+    const vc_root = if (output) |root| blk: {
+        var dir = mem.trimRight(u8, root, "\n");
         debug("Add git root {s} as one root", .{dir});
         try options.includes.put(dir, {});
-    } else {
+        break :blk dir;
+    } else blk: {
         debug("Not in a git dir", .{});
-    }
+        break :blk null;
+    };
 
     var projects = Projects.init(allocator);
     var iter = options.includes.keyIterator();
@@ -137,7 +132,6 @@ fn build(allocator: Allocator, options: *Options) !void {
         try projects.pickDependencies();
     }
 
-    const states = &[_]Projects.State{ .Picked, .Dependency };
     if (options.commands.items.len > 0) {
         const settings_file = options.settings_file orelse "build.settings.gradle.kts";
         var gradle_cmd = try std.ArrayList([]const u8).initCapacity(allocator, options.commands.items.len + 3);
@@ -148,19 +142,19 @@ fn build(allocator: Allocator, options: *Options) !void {
         const command = gradle_cmd.items;
         debug("Gradle command is : {s}", .{command});
 
-        var partitions = projects.partition(states, options.threshold);
-        while (true) {
-            var i = partitions.next();
-            if (i == null) break;
-
-            try write(allocator, &i.?, settings_file);
+        var partitions = projects.entries[@enumToInt(Projects.State.Picked)].items;
+        var i = @as(usize, 0);
+        while (i < partitions.len) {
+            const end = @min(partitions.len, i + options.threshold);
+            try write(allocator, partitions[i..end], settings_file);
+            i = end;
+            info("Execute {s}", .{command});
             if (spawn(allocator, command)) |_| {} else |e| {
                 fatal("Execute command failed: {s} {}", .{ command, e });
             }
         }
     } else {
-        var i = projects.iterate(states);
-        try write(allocator, &i, options.settings_file orelse "settings.gradle.kts");
+        try write(allocator, projects.entries[@enumToInt(Projects.State.Picked)].items, options.settings_file orelse "settings.gradle.kts");
     }
 }
 
@@ -168,8 +162,8 @@ const max_depth_allowed = 3;
 const Options = struct {
     since_commit: ?[]const u8 = null,
     includes: StringHashMap(void),
-    regexp: ?[]const u8 = null,
-    invert_match: ?[]const u8 = null,
+    regexp: ?[:0]const u8 = null,
+    invert_match: ?[:0]const u8 = null,
     settings_file: ?[]const u8 = null,
     threshold: usize = 1000,
     max_depth: usize = 2,
@@ -178,30 +172,33 @@ const Options = struct {
 };
 const Projects = struct {
     allocator: Allocator,
-    entries: StringHashMap(Entry) = undefined,
+    entries: [@enumToInt(State.Denied) + 1]ArrayList(Entry) = undefined,
 
     const Entry = struct {
+        name: [:0]const u8,
         path: []const u8,
         root: []const u8,
         is_build_file_kts: bool,
-        state: State,
     };
     const State = enum(u2) {
         Added,
         Picked,
         Denied,
-        Dependency,
     };
+
     pub fn init(allocator: Allocator) Projects {
-        return Projects{
+        var self = Projects{
             .allocator = allocator,
-            .entries = StringHashMap(Entry).init(allocator),
         };
+        for (self.entries) |*p| {
+            p.* = ArrayList(Entry).init(allocator);
+        }
+        return self;
     }
 
     pub fn scan(self: *@This(), root: []const u8, max_depth: usize) !void {
         debug("Start scanning {s}", .{root});
-        var projects = &self.entries;
+        var projects = &self.entries[@enumToInt(State.Added)];
         var names = [_][]const u8{""} ** (max_depth_allowed * 2);
         var dir_stack: [max_depth_allowed + 1]std.fs.IterableDir = undefined;
         var iter_stack: [max_depth_allowed + 1]std.fs.IterableDir.Iterator = undefined;
@@ -216,8 +213,7 @@ const Projects = struct {
             };
             if (entry) |f| {
                 const name = f.name;
-                debug("Found {s}", .{name});
-                if (f.kind == .File and (mem.eql(u8, name, "build.gradle.kts") or mem.eql(u8, name, "build.gradle"))) {
+                if (sp > 0 and f.kind == .File and (mem.eql(u8, name, "build.gradle.kts") or mem.eql(u8, name, "build.gradle"))) {
                     const name_index = (sp - 1) * 2;
                     var i = @as(usize, 1);
                     while (i < name_index) : (i += 2) {
@@ -228,20 +224,21 @@ const Projects = struct {
                     while (i < name_index) : (i += 2) {
                         names[i] = ":";
                     }
-                    if (name_index > 0 and mem.eql(u8, name, "android") or mem.eql(u8, name, "domain")) {
+                    if (name_index > 0 and mem.eql(u8, names[name_index], "android") or mem.eql(u8, names[name_index], "domain")) {
                         names[name_index - 1] = "-";
                     }
-                    const p_name = try mem.concat(self.allocator, u8, names[0 .. name_index + 1]);
+                    const p_name = try mem.concatWithSentinel(self.allocator, u8, names[0 .. name_index + 1], 0);
                     const p = Entry{
+                        .name = p_name,
                         .path = path,
                         .root = root,
                         .is_build_file_kts = mem.endsWith(u8, name, "kts"),
-                        .state = .Added,
                     };
-                    info("Found project {s} {any}, added", .{ p_name, p });
-                    try projects.put(p_name, p);
+                    debug("Found project {s} at {s}/{s}, added", .{ p_name, root, path });
+                    try projects.append(p);
                     entry = null;
                 } else if (f.kind == .Directory and sp < max_depth and !mem.startsWith(u8, name, ".")) {
+                    debug("Found {s}", .{name});
                     names[sp * 2] = name;
                     const depth = sp + 1;
                     debug("Enter level {} dir: {s}", .{ depth, name });
@@ -265,33 +262,30 @@ const Projects = struct {
         debug("Finish scanning", .{});
     }
 
-    pub fn pick(self: *@This(), regexp: []const u8) !void {
+    pub fn pick(self: *@This(), regexp: [:0]const u8) !void {
         return self.move(regexp, .Added, .Picked);
     }
 
     pub fn pickAll(self: *@This()) !void {
-        var iter = (&self.entries).valueIterator();
-        while (iter.next()) |v| {
-            if (v.state == .Added) {
-                v.state = .Picked;
-            }
-        }
-        debug("Move all .Added to .Picked", .{});
+        info("Move all .Added to .Picked", .{});
+        try self.entries[@enumToInt(State.Picked)].appendSlice(self.entries[@enumToInt(State.Added)].toOwnedSlice());
     }
 
     pub fn pickDependencies(_: *Projects) !void {}
 
-    pub fn deny(self: *@This(), regexp: []const u8) !void {
+    pub fn deny(self: *@This(), regexp: [:0]const u8) !void {
         return self.move(regexp, .Picked, .Denied);
     }
 
     pub fn denyUnchanged(self: *@This(), root: []const u8, since_commit: []const u8, max_depth: usize) !void {
+        info("Move projects based on changes since commit {s}", .{since_commit});
         if (exec(self.allocator, &[_][]const u8{
             "git", "diff", "--name-only", "--merge-base", since_commit,
         }, root)) |changes| {
             var dirs = StringHashMap(void).init(self.allocator);
             var lines = mem.tokenize(u8, changes, "\n");
             while (lines.next()) |line| {
+                debug("File changed: {s}", .{line});
                 var i = @as(usize, 0);
                 var depth = @as(usize, 0);
                 while (i < line.len and depth < max_depth) : (depth += 1) {
@@ -300,10 +294,15 @@ const Projects = struct {
                 }
             }
 
-            var iter = (&self.entries).valueIterator();
-            while (iter.next()) |v| {
-                if (v.state == .Picked and !dirs.contains(v.path)) {
-                    v.state = .Denied;
+            var from_list = &self.entries[@enumToInt(State.Picked)];
+            var to_list = &self.entries[@enumToInt(State.Denied)];
+            var i = @as(usize, 0);
+            while (i < from_list.items.len) {
+                if (!dirs.contains(from_list.items[i].path)) {
+                    info("Move {s} from .Picked to .Denied", .{from_list.items[i].path});
+                    try to_list.append(from_list.swapRemove(i));
+                } else {
+                    i += 1;
                 }
             }
         } else |e| {
@@ -311,88 +310,39 @@ const Projects = struct {
         }
     }
 
-    const Iterator = struct {
-        states: []const State,
-        internal_iter: StringHashMap(Projects.Entry).Iterator,
-        max_count: usize = std.math.maxInt(usize),
-        i: usize = 0,
-
-        const Entry = struct {
-            name: []const u8,
-            path: []const u8,
-            root: []const u8,
-        };
-        fn next(self: *@This()) ?Iterator.Entry {
-            defer self.i += 1;
-
-            if (self.i < self.max_count) {
-                while (self.internal_iter.next()) |kv| {
-                    if (mem.indexOfScalar(State, self.states, kv.value_ptr.state) == null)
-                        continue;
-                    return Iterator.Entry{
-                        .name = kv.key_ptr.*,
-                        .path = kv.value_ptr.path,
-                        .root = kv.value_ptr.root,
-                    };
-                }
-            }
-            return null;
-        }
-    };
-
-    pub fn iterate(self: *@This(), states: []const State) Iterator {
-        return Iterator{
-            .states = states,
-            .internal_iter = self.entries.iterator(),
-        };
-    }
-
-    const PartitionIterator = struct {
-        states: []const State,
-        internal_iter: StringHashMap(Entry).Iterator,
-        threshold: usize = std.math.maxInt(usize),
-
-        fn next(self: *@This()) ?Iterator {
-            if (self.internal_iter.index % self.threshold == 0) {
-                return Iterator{
-                    .states = self.states,
-                    .internal_iter = self.internal_iter,
-                    .max_count = self.threshold,
-                };
-            }
-            return null;
-        }
-    };
-
-    pub fn partition(self: *@This(), states: []const State, threshold: usize) PartitionIterator {
-        return PartitionIterator{
-            .states = states,
-            .internal_iter = self.entries.iterator(),
-            .threshold = threshold,
-        };
-    }
-
-    fn move(self: *@This(), pattern: []const u8, from: State, to: State) !void {
-        var slice = try self.allocator.alignedAlloc(u8, REGEX_T_ALIGNOF, REGEX_T_SIZEOF);
+    fn move(self: *@This(), pattern: [:0]const u8, from: State, to: State) !void {
+        info("Move projects state based on the regexp {s}", .{pattern});
+        var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
+        defer arena.deinit();
+        const allocator = arena.allocator();
+        const re = @cImport(@cInclude("regez.h"));
+        var slice = try allocator.alignedAlloc(u8, re.alignof_regex_t, re.sizeof_regex_t);
         const regex = @ptrCast(*re.regex_t, slice.ptr);
-        defer self.allocator.free(@ptrCast([*]u8, regex)[0..REGEX_T_SIZEOF]);
-
-        if (re.regcomp(regex, @ptrCast([*c]const u8, pattern), 0) != 0) {
-            fatal("Invalid regex: {s}", .{pattern});
+        var buf = try allocator.alloc(u8, 512);
+        const buf_ptr = @ptrCast([*c]u8, buf.ptr);
+        mem.copy(u8, buf[0..pattern.len], pattern);
+        buf[pattern.len] = 0;
+        if (re.regcomp(regex, buf_ptr, 0) != 0) {
+            fatal("Invalid regex '{s}'", .{pattern});
         }
-        defer re.regfree(regex);
-
-        var iter = (&self.entries).iterator();
-        while (iter.next()) |kv| {
-            if (kv.value_ptr.state == from and re.isMatch(regex, @ptrCast([*c]const u8, kv.key_ptr.*))) {
-                debug("Move {s} from {} to {}", .{ kv.key_ptr.*, from, to });
-                kv.value_ptr.state = to;
+        var from_list = &self.entries[@enumToInt(from)];
+        var to_list = &self.entries[@enumToInt(to)];
+        var i = @as(usize, 0);
+        while (i < from_list.items.len) {
+            const name = from_list.items[i].name;
+            mem.copy(u8, buf[0..name.len], name);
+            buf[name.len] = 0;
+            if (re.isMatch(regex, buf_ptr)) {
+                info("Move {s} from {} to {}", .{ name, from, to });
+                try to_list.append(from_list.swapRemove(i));
+            } else {
+                i += 1;
             }
         }
     }
 };
 
-fn write(allocator: Allocator, projects: *Projects.Iterator, settings_file: []const u8) !void {
+fn write(allocator: Allocator, projects: []Projects.Entry, settings_file: []const u8) !void {
     const cwd = std.fs.cwd();
     const dir = if (std.fs.path.dirname(settings_file)) |dir| try std.fs.cwd().openDir(dir, .{}) else cwd;
     const file = dir.createFile(settings_file, .{
@@ -421,8 +371,8 @@ fn write(allocator: Allocator, projects: *Projects.Iterator, settings_file: []co
     debug("Start writing projects into {s}", .{settings_file});
     var relative_paths = StringHashMap([]const u8).init(allocator);
     const dir_path = try dir.realpathAlloc(allocator, ".");
-    while (projects.next()) |p| {
-        debug("Add project {} to {s}", .{ p, settings_file });
+    for (projects) |p| {
+        info("Add project {s} to {s}", .{ p.name, settings_file });
         const relative = try relative_paths.getOrPut(p.root);
         if (!relative.found_existing) {
             relative.value_ptr.* = try std.fs.path.relative(allocator, dir_path, p.root);
@@ -433,6 +383,7 @@ fn write(allocator: Allocator, projects: *Projects.Iterator, settings_file: []co
         const text = try std.fmt.allocPrint(allocator,
             \\include(":{s}")
             \\project(":{s}").projectDir = file("{s}/{s}")
+            \\
             \\
         , .{ p.name, p.name, relative.value_ptr.*, p.path });
         defer allocator.free(text);
