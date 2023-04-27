@@ -132,8 +132,9 @@ fn build(allocator: Allocator, options: *Options) !void {
         try projects.pickDependencies();
     }
 
-    if (options.commands.items.len > 0) {
-        const settings_file = options.settings_file orelse "build.settings.gradle.kts";
+    const settings_file = options.settings_file orelse if (options.commands.items.len > 0) "build.settings.gradle.kts" else "settings.gradle.kts";
+    var partitions = projects.entries[@enumToInt(Projects.State.Picked)].items;
+    if (partitions.len > 0 and options.commands.items.len > 0) {
         var gradle_cmd = try std.ArrayList([]const u8).initCapacity(allocator, options.commands.items.len + 3);
         try gradle_cmd.append(std.os.getenvZ("GRADLE_CMD") orelse "./gradlew");
         try gradle_cmd.appendSlice(options.commands.items);
@@ -142,7 +143,6 @@ fn build(allocator: Allocator, options: *Options) !void {
         const command = gradle_cmd.items;
         debug("Gradle command is : {s}", .{command});
 
-        var partitions = projects.entries[@enumToInt(Projects.State.Picked)].items;
         var i = @as(usize, 0);
         while (i < partitions.len) {
             const end = @min(partitions.len, i + options.threshold);
@@ -154,7 +154,7 @@ fn build(allocator: Allocator, options: *Options) !void {
             }
         }
     } else {
-        try write(allocator, projects.entries[@enumToInt(Projects.State.Picked)].items, options.settings_file orelse "settings.gradle.kts");
+        try write(allocator, partitions, settings_file);
     }
 }
 
@@ -202,7 +202,7 @@ const Projects = struct {
         var names = [_][]const u8{""} ** (max_depth_allowed * 2);
         var dir_stack: [max_depth_allowed + 1]std.fs.IterableDir = undefined;
         var iter_stack: [max_depth_allowed + 1]std.fs.IterableDir.Iterator = undefined;
-        dir_stack[0] = try std.fs.openIterableDirAbsolute(root, .{});
+        dir_stack[0] = std.fs.openIterableDirAbsolute(root, .{}) catch fatal("Can't open directory: {s}", .{root});
         iter_stack[0] = (&dir_stack[0]).iterate();
         var sp = @as(usize, 0);
         debug("Enter {s}", .{root});
@@ -280,7 +280,7 @@ const Projects = struct {
     pub fn denyUnchanged(self: *@This(), root: []const u8, since_commit: []const u8, max_depth: usize) !void {
         info("Move projects based on changes since commit {s}", .{since_commit});
         if (exec(self.allocator, &[_][]const u8{
-            "git", "diff", "--name-only", "--merge-base", since_commit,
+            "git", "diff", "--name-only", "--merge-base", since_commit, "HEAD",
         }, root)) |changes| {
             var dirs = StringHashMap(void).init(self.allocator);
             var lines = mem.tokenize(u8, changes, "\n");
