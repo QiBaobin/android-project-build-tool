@@ -279,8 +279,13 @@ const Projects = struct {
 
     pub fn denyUnchanged(self: *@This(), root: []const u8, since_commit: []const u8, max_depth: usize) !void {
         info("Move projects based on changes since commit {s}", .{since_commit});
+        const cur = "...HEAD";
+        var range = try self.allocator.alloc(u8, since_commit.len + cur.len);
+        defer self.allocator.free(range);
+        mem.copy(u8, range[0..since_commit.len], since_commit);
+        mem.copy(u8, range[since_commit.len..], cur);
         if (exec(self.allocator, &[_][]const u8{
-            "git", "diff", "--name-only", "--merge-base", since_commit, "HEAD",
+            "git", "diff", "--name-only", range,
         }, root)) |changes| {
             var dirs = StringHashMap(void).init(self.allocator);
             var lines = mem.tokenize(u8, changes, "\n");
@@ -393,7 +398,7 @@ fn write(allocator: Allocator, projects: []Projects.Entry, settings_file: []cons
 }
 
 fn exec(allocator: Allocator, cmd: []const []const u8, cwd: ?[]const u8) ![]const u8 {
-    debug("Execute external command: {s}", .{cmd});
+    info("Execute external command: {s} in {s}", .{ cmd, cwd orelse "." });
     const result = try std.ChildProcess.exec(.{
         .allocator = allocator,
         .argv = cmd,
