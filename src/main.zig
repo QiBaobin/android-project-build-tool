@@ -279,7 +279,7 @@ const Projects = struct {
 
     pub fn denyUnchanged(self: *@This(), root: []const u8, since_commit: []const u8, max_depth: usize) !void {
         info("Move projects based on changes since commit {s}", .{since_commit});
-        const cur = "...HEAD";
+        const cur = "..HEAD";
         var range = try self.allocator.alloc(u8, since_commit.len + cur.len);
         defer self.allocator.free(range);
         mem.copy(u8, range[0..since_commit.len], since_commit);
@@ -288,21 +288,16 @@ const Projects = struct {
             "git", "diff", "--name-only", range,
         }, root)) |changes| {
             var dirs = StringHashMap(void).init(self.allocator);
-            var lines = mem.tokenize(u8, changes, "\n");
-            while (lines.next()) |line| {
-                debug("File changed: {s}", .{line});
-                var i = @as(usize, 0);
-                var depth = @as(usize, 0);
-                while (i < line.len and depth < max_depth) : (depth += 1) {
-                    i = mem.indexOfScalarPos(u8, line, i, std.fs.path.sep) orelse line.len;
-                    try dirs.put(line[0..i], {});
-                }
-            }
+            try cacheDirs(changes, max_depth, &dirs);
+            try cacheDirs(exec(self.allocator, &[_][]const u8{
+                "git", "ls-files", "-o", "--exclude-standard", "--modified",
+            }, root) catch "", max_depth, &dirs);
 
             var from_list = &self.entries[@enumToInt(State.Picked)];
             var to_list = &self.entries[@enumToInt(State.Denied)];
             var i = @as(usize, 0);
             while (i < from_list.items.len) {
+                debug("checking {s}", .{from_list.items[i].path});
                 if (!dirs.contains(from_list.items[i].path)) {
                     info("Move {s} from .Picked to .Denied", .{from_list.items[i].path});
                     try to_list.append(from_list.swapRemove(i));
@@ -312,6 +307,20 @@ const Projects = struct {
             }
         } else |e| {
             fatal("Can't get git diff, {}", .{e});
+        }
+    }
+    inline fn cacheDirs(files: []const u8, max_depth: usize, cache: *StringHashMap(void)) !void {
+        var lines = mem.tokenize(u8, files, "\n");
+        while (lines.next()) |line| {
+            debug("File changed: {s}", .{line});
+            var i = @as(usize, 0);
+            var depth = @as(usize, 0);
+            while (i < line.len and depth < max_depth) : (depth += 1) {
+                const j = mem.indexOfScalarPos(u8, line, i, std.fs.path.sep) orelse line.len;
+                try cache.put(line[0..j], {});
+                debug("add change dir: {s}", .{line[0..j]});
+                i = j + 1;
+            }
         }
     }
 
