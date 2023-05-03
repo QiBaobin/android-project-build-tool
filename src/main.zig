@@ -336,7 +336,7 @@ const Projects = struct {
         const buf_ptr = @ptrCast([*c]u8, buf.ptr);
         mem.copy(u8, buf[0..pattern.len], pattern);
         buf[pattern.len] = 0;
-        if (re.regcomp(regex, buf_ptr, 0) != 0) {
+        if (re.regcomp(regex, buf_ptr, re.REG_EXTENDED) != 0) {
             fatal("Invalid regex '{s}'", .{pattern});
         }
         var from_list = &self.entries[@enumToInt(from)];
@@ -346,10 +346,12 @@ const Projects = struct {
             const name = from_list.items[i].name;
             mem.copy(u8, buf[0..name.len], name);
             buf[name.len] = 0;
-            if (re.isMatch(regex, buf_ptr)) {
+            const ret = re.isMatch(regex, buf_ptr);
+            if (ret == 0) {
                 info("Move {s} from {} to {}", .{ name, from, to });
                 try to_list.append(from_list.swapRemove(i));
             } else {
+                debug("Checking project {s}: return {}", .{ buf_ptr, ret });
                 i += 1;
             }
         }
@@ -433,4 +435,31 @@ fn spawn(allocator: Allocator, cmd: [][]const u8) !std.ChildProcess.Term {
 fn fatal(comptime format: []const u8, args: anytype) noreturn {
     std.log.err(format, args);
     process.exit(1);
+}
+
+test "test regex common patterns" {
+    const pattern = "foo|bar";
+
+    var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const re = @cImport(@cInclude("regez.h"));
+    var slice = try allocator.alignedAlloc(u8, re.alignof_regex_t, re.sizeof_regex_t);
+    const regex = @ptrCast(*re.regex_t, slice.ptr);
+    var buf = try allocator.alloc(u8, 512);
+    const buf_ptr = @ptrCast([*c]u8, buf.ptr);
+    mem.copy(u8, buf[0..pattern.len], pattern);
+    buf[pattern.len] = 0;
+    if (re.regcomp(regex, buf_ptr, re.REG_EXTENDED) != 0) {
+        fatal("Invalid regex '{s}'", .{pattern});
+    }
+
+    mem.copy(u8, buf[0..5], "food");
+    std.debug.assert(re.isMatch(regex, buf_ptr) == 0);
+
+    mem.copy(u8, buf[0..6], "abart");
+    std.debug.assert(re.isMatch(regex, buf_ptr) == 0);
+
+    mem.copy(u8, buf[0..5], "foba");
+    std.debug.assert(re.isMatch(regex, buf_ptr) == 1);
 }
