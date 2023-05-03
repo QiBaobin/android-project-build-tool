@@ -149,7 +149,11 @@ fn build(allocator: Allocator, options: *Options) !void {
             try write(allocator, partitions[i..end], settings_file);
             i = end;
             info("Execute {s}", .{command});
-            if (spawn(allocator, command)) |_| {} else |e| {
+            if (spawn(allocator, command)) |term| {
+                if (term.Exited != 0) {
+                fatal("Execute command failed: {s} {}", .{ command, term.Exited });
+                }
+            } else |e| {
                 fatal("Execute command failed: {s} {}", .{ command, e });
             }
         }
