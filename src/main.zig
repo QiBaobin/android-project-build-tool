@@ -47,12 +47,8 @@ pub fn main() !void {
         .includes = StringHashMap(void).init(allocator),
         .commands = std.ArrayList([]const u8).init(allocator),
     };
-    const cwd = try std.fs.cwd().realpathAlloc(allocator, ".");
-    try options.includes.put(cwd, {});
-    debug("Added current dir {s} as one root", .{cwd});
     _ = args.skip(); // skip program path
     while (args.next()) |arg| {
-        debug("Arg {s}", .{arg});
         if (mem.eql(u8, arg, "-h") or mem.eql(u8, arg, "--help")) {
             return io.getStdOut().writeAll(usage);
         }
@@ -84,6 +80,9 @@ pub fn main() !void {
             break;
         }
     }
+    const cwd = try std.fs.cwd().realpathAlloc(allocator, ".");
+    try options.includes.put(cwd, {});
+    debug("Added current dir {s} as one root", .{cwd});
     while (args.next()) |arg| {
         try options.commands.append(arg);
     }
