@@ -47,6 +47,7 @@ pub fn main() !void {
         .includes = StringHashMap(void).init(allocator),
         .commands = std.ArrayList([]const u8).init(allocator),
     };
+    const cwd = try std.fs.cwd().realpathAlloc(allocator, ".");
     _ = args.skip(); // skip program path
     while (args.next()) |arg| {
         if (mem.eql(u8, arg, "-h") or mem.eql(u8, arg, "--help")) {
@@ -80,7 +81,6 @@ pub fn main() !void {
             break;
         }
     }
-    const cwd = try std.fs.cwd().realpathAlloc(allocator, ".");
     try options.includes.put(cwd, {});
     debug("Added current dir {s} as one root", .{cwd});
     while (args.next()) |arg| {
@@ -282,13 +282,8 @@ const Projects = struct {
 
     pub fn denyUnchanged(self: *@This(), root: []const u8, since_commit: []const u8, max_depth: usize) !void {
         info("Move projects based on changes since commit {s}", .{since_commit});
-        const cur = "..HEAD";
-        var range = try self.allocator.alloc(u8, since_commit.len + cur.len);
-        defer self.allocator.free(range);
-        mem.copy(u8, range[0..since_commit.len], since_commit);
-        mem.copy(u8, range[since_commit.len..], cur);
         if (exec(self.allocator, &[_][]const u8{
-            "git", "diff", "--name-only", range,
+            "git", "diff", "--name-only", since_commit,
         }, root)) |changes| {
             var dirs = StringHashMap(void).init(self.allocator);
             try cacheDirs(changes, max_depth, &dirs);
