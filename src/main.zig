@@ -299,9 +299,9 @@ const Projects = struct {
                 "sh", "-c", script,
             }, try std.fs.path.resolve(self.allocator, &[_][]const u8{ from_list.items[i].root, path }))) |term| {
                 if (term.Exited != 0) {
-                    info("Move {s} from .Picked to .Denied", .{path});
                     try to_list.append(from_list.swapRemove(i));
                 } else {
+                    info("Keep {s} in .Picked", .{path});
                     i += 1;
                 }
             } else |e| {
