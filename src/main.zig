@@ -21,6 +21,7 @@ const usage =
     \\  -i, --include                  Include projects under given path
     \\  -e, --regexp                   A project is selected if its name matches given pattern
     \\  -v, --invert-match             A project is NOT selected if its name matches given pattern
+    \\  -f, --filter                   A project is selected if the given shell command pass in its directory
     \\  -c, --settings-file            The gradle settings file will be generated and used
     \\  --threshold                    The max number of project can run at one time, projects more than it will be sepearted into many run
     \\  --max-depth                    Descend at most n directory levels
@@ -66,6 +67,8 @@ pub fn main() !void {
             options.regexp = nextOrFatal(&args, arg);
         } else if (mem.eql(u8, arg, "-v") or mem.eql(u8, arg, "--invert-match")) {
             options.invert_match = nextOrFatal(&args, arg);
+        } else if (mem.eql(u8, arg, "-f") or mem.eql(u8, arg, "--filter")) {
+            options.filter = nextOrFatal(&args, arg);
         } else if (mem.eql(u8, arg, "-c") or mem.eql(u8, arg, "--settings-file")) {
             options.settings_file = nextOrFatal(&args, arg);
         } else if (mem.eql(u8, arg, "--threshold")) {
@@ -122,6 +125,9 @@ fn build(allocator: Allocator, options: *Options) !void {
     if (options.invert_match) |pattern| {
         try projects.deny(pattern);
     }
+    if (options.filter) |pattern| {
+        try projects.filter(pattern);
+    }
     if (options.since_commit) |commit| {
         if (vc_root) |root| {
             try projects.denyUnchanged(root, commit, options.threshold);
@@ -148,9 +154,9 @@ fn build(allocator: Allocator, options: *Options) !void {
             try write(allocator, partitions[i..end], settings_file);
             i = end;
             info("Execute {s}", .{command});
-            if (spawn(allocator, command)) |term| {
+            if (spawn(allocator, command, null)) |term| {
                 if (term.Exited != 0) {
-                fatal("Execute command failed: {s} {}", .{ command, term.Exited });
+                    fatal("Execute command failed: {s} {}", .{ command, term.Exited });
                 }
             } else |e| {
                 fatal("Execute command failed: {s} {}", .{ command, e });
@@ -167,6 +173,7 @@ const Options = struct {
     includes: StringHashMap(void),
     regexp: ?[:0]const u8 = null,
     invert_match: ?[:0]const u8 = null,
+    filter: ?[:0]const u8 = null,
     settings_file: ?[]const u8 = null,
     threshold: usize = 1000,
     max_depth: usize = 2,
@@ -278,6 +285,29 @@ const Projects = struct {
 
     pub fn deny(self: *@This(), regexp: [:0]const u8) !void {
         return self.move(regexp, .Picked, .Denied);
+    }
+
+    pub fn filter(self: *@This(), script: []const u8) !void {
+        info("Move projects based on filter {s}", .{script});
+        var from_list = &self.entries[@enumToInt(State.Picked)];
+        var to_list = &self.entries[@enumToInt(State.Denied)];
+        var i = @as(usize, 0);
+        while (i < from_list.items.len) {
+            const path = from_list.items[i].path;
+            debug("checking {s}", .{path});
+            if (spawn(self.allocator, &[_][]const u8{
+                "sh", "-c", script,
+            }, try std.fs.path.resolve(self.allocator, &[_][]const u8{ from_list.items[i].root, path }))) |term| {
+                if (term.Exited != 0) {
+                    info("Move {s} from .Picked to .Denied", .{path});
+                    try to_list.append(from_list.swapRemove(i));
+                } else {
+                    i += 1;
+                }
+            } else |e| {
+                fatal("Run filter {s} under {s} failed: {}", .{ script, path, e });
+            }
+        }
     }
 
     pub fn denyUnchanged(self: *@This(), root: []const u8, since_commit: []const u8, max_depth: usize) !void {
@@ -421,8 +451,11 @@ fn exec(allocator: Allocator, cmd: []const []const u8, cwd: ?[]const u8) ![]cons
     return result.stdout;
 }
 
-fn spawn(allocator: Allocator, cmd: [][]const u8) !std.ChildProcess.Term {
+fn spawn(allocator: Allocator, cmd: [][]const u8, cwd: ?[]const u8) !std.ChildProcess.Term {
     var child = std.ChildProcess.init(cmd, allocator);
+    if (cwd) |dir| {
+        child.cwd = dir;
+    }
     child.stdin_behavior = .Ignore;
     child.stdout_behavior = .Inherit;
     child.stderr_behavior = .Inherit;
