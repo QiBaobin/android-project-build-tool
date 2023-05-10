@@ -442,6 +442,7 @@ fn exec(allocator: Allocator, cmd: []const []const u8, cwd: ?[]const u8) ![]cons
         .allocator = allocator,
         .argv = cmd,
         .cwd = cwd,
+        .max_output_bytes = 5 * 1024 * 1024,
     });
 
     if (result.stderr.len > 0) {
