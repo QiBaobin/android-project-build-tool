@@ -312,12 +312,16 @@ const Projects = struct {
 
     pub fn denyUnchanged(self: *@This(), root: []const u8, since_commit: []const u8, max_depth: usize) !void {
         info("Move projects based on changes since commit {s}", .{since_commit});
-        if (exec(self.allocator, &[_][]const u8{
+        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        defer arena.deinit();
+        const allocator = arena.allocator();
+
+        if (exec(allocator, &[_][]const u8{
             "git", "diff", "--name-only", since_commit,
         }, root)) |changes| {
-            var dirs = StringHashMap(void).init(self.allocator);
+            var dirs = StringHashMap(void).init(allocator);
             try cacheDirs(changes, max_depth, &dirs);
-            try cacheDirs(exec(self.allocator, &[_][]const u8{
+            try cacheDirs(exec(allocator, &[_][]const u8{
                 "git", "ls-files", "-o", "--exclude-standard", "--modified",
             }, root) catch "", max_depth, &dirs);
 
