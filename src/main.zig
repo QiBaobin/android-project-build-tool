@@ -453,6 +453,9 @@ fn exec(allocator: Allocator, cmd: []const []const u8, cwd: ?[]const u8) ![]cons
         std.log.err("{s}", .{result.stderr});
     }
     debug("Command finished with: {any}", .{result});
+    if (result.term.Exited != 0) {
+        return error.ReturnError;
+    }
     return result.stdout;
 }
 
