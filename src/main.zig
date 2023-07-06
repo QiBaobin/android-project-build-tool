@@ -399,22 +399,19 @@ fn write(allocator: Allocator, projects: []Projects.Entry, settings_file: []cons
         fatal("Can create file {s} {}ex", .{ settings_file, ex });
     };
     defer file.close();
-    _ = try file.writeAll("// this is auto generated, please don't edit.\n// You can add logic in settings.pre.gradle.kts instead.\n// Ue `abt -v open` can regenerate this file.\n");
-    if (dir.openFile("settings.pre.gradle.kts", .{})) |pre| {
-        defer pre.close();
-        var buf: [2048]u8 = undefined;
-        while (pre.readAll(&buf)) |count| {
-            _ = try file.writeAll(buf[0..count]);
-
-            if (count < buf.len) {
-                break;
-            }
-        } else |e| {
-            warn("write to settings file failed: {}", .{e});
-        }
-    } else |e| {
-        warn("read settings.pre.gradle.kts file failed: {}", .{e});
-    }
+    _ = try file.writeAll(
+        \\// this is auto generated, please don't edit.
+        \\// You can add logic in settings.pre.gradle.kts instead.
+        \\// Ue `abt` can regenerate this file.
+        \\
+        \\
+    );
+    _ = try file.writeAll(
+        \\val pre = "settings.pre.gradle.kts"
+        \\if (file(pre).exists()) apply(pre)
+        \\
+        \\
+    );
 
     debug("Start writing projects into {s}", .{settings_file});
     var relative_paths = StringHashMap([]const u8).init(allocator);
