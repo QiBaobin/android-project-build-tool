@@ -141,7 +141,14 @@ fn build(allocator: Allocator, options: *Options) !void {
     var partitions = projects.entries[@enumToInt(Projects.State.Picked)].items;
     if (partitions.len > 0 and options.commands.items.len > 0) {
         var gradle_cmd = try std.ArrayList([]const u8).initCapacity(allocator, options.commands.items.len + 3);
-        try gradle_cmd.append(std.os.getenvZ("GRADLE_CMD") orelse "./gradlew");
+        if (std.os.getenvZ("GRADLE_CMD")) |cmd| {
+            var words = mem.tokenize(u8,  cmd, " ");
+            while (words.next()) |arg| {
+                try gradle_cmd.append(arg);
+            }
+        } else {
+            try gradle_cmd.append("./gradlew");
+        }
         try gradle_cmd.appendSlice(options.commands.items);
         try gradle_cmd.append("-c");
         try gradle_cmd.append(settings_file);
