@@ -130,7 +130,15 @@ fn build(allocator: Allocator, options: *Options) !void {
     }
     if (options.since_commit) |commit| {
         if (vc_root) |root| {
-            try projects.denyUnchanged(root, commit, options.threshold);
+            if (exec(allocator, &[_][]const u8{
+                "git", "merge-base", "--all", "HEAD", commit,
+            }, root)) |base| {
+                info("Found the merge base commit {s}", .{base});
+                try projects.denyUnchanged(root, mem.trimRight(u8, base, "\n"), options.threshold);
+            } else |e| {
+                warn("Call git merge-base failed {}, use the commit {s} directly", .{ e, commit });
+                try projects.denyUnchanged(root, commit, options.threshold);
+            }
         }
     }
     if (options.scan_impacted_projects) {
@@ -142,7 +150,7 @@ fn build(allocator: Allocator, options: *Options) !void {
     if (partitions.len > 0 and options.commands.items.len > 0) {
         var gradle_cmd = try std.ArrayList([]const u8).initCapacity(allocator, options.commands.items.len + 3);
         if (std.os.getenvZ("GRADLE_CMD")) |cmd| {
-            var words = mem.tokenize(u8,  cmd, " ");
+            var words = mem.tokenize(u8, cmd, " ");
             while (words.next()) |arg| {
                 try gradle_cmd.append(arg);
             }
