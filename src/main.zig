@@ -146,7 +146,7 @@ fn build(allocator: Allocator, options: *Options) !void {
     }
 
     const settings_file = options.settings_file orelse if (options.commands.items.len > 0) "build.settings.gradle.kts" else "settings.gradle.kts";
-    var partitions = projects.entries[@enumToInt(Projects.State.Picked)].items;
+    var partitions = projects.entries[@intFromEnum(Projects.State.Picked)].items;
     if (partitions.len > 0 and options.commands.items.len > 0) {
         var gradle_cmd = try std.ArrayList([]const u8).initCapacity(allocator, options.commands.items.len + 3);
         if (std.os.getenvZ("GRADLE_CMD")) |cmd| {
@@ -197,7 +197,7 @@ const Options = struct {
 };
 const Projects = struct {
     allocator: Allocator,
-    entries: [@enumToInt(State.Denied) + 1]ArrayList(Entry) = undefined,
+    entries: [@intFromEnum(State.Denied) + 1]ArrayList(Entry) = undefined,
 
     const Entry = struct {
         name: [:0]const u8,
@@ -215,7 +215,7 @@ const Projects = struct {
         var self = Projects{
             .allocator = allocator,
         };
-        for (self.entries) |*p| {
+        for (&self.entries) |*p| {
             p.* = ArrayList(Entry).init(allocator);
         }
         return self;
@@ -223,7 +223,7 @@ const Projects = struct {
 
     pub fn scan(self: *@This(), root: []const u8, max_depth: usize) !void {
         debug("Start scanning {s}", .{root});
-        var projects = &self.entries[@enumToInt(State.Added)];
+        var projects = &self.entries[@intFromEnum(State.Added)];
         var names = [_][]const u8{""} ** (max_depth_allowed * 2);
         var dir_stack: [max_depth_allowed + 1]std.fs.IterableDir = undefined;
         var iter_stack: [max_depth_allowed + 1]std.fs.IterableDir.Iterator = undefined;
@@ -238,7 +238,7 @@ const Projects = struct {
             };
             if (entry) |f| {
                 const name = f.name;
-                if (sp > 0 and f.kind == .File and (mem.eql(u8, name, "build.gradle.kts") or mem.eql(u8, name, "build.gradle"))) {
+                if (sp > 0 and f.kind == .file and (mem.eql(u8, name, "build.gradle.kts") or mem.eql(u8, name, "build.gradle"))) {
                     const name_index = (sp - 1) * 2;
                     var i = @as(usize, 1);
                     while (i < name_index) : (i += 2) {
@@ -262,7 +262,7 @@ const Projects = struct {
                     debug("Found project {s} at {s}/{s}, added", .{ p_name, root, path });
                     try projects.append(p);
                     entry = null;
-                } else if (f.kind == .Directory and sp < max_depth and !mem.startsWith(u8, name, ".")) {
+                } else if (f.kind == .directory and sp < max_depth and !mem.startsWith(u8, name, ".")) {
                     debug("Found {s}", .{name});
                     names[sp * 2] = name;
                     const depth = sp + 1;
@@ -293,7 +293,7 @@ const Projects = struct {
 
     pub fn pickAll(self: *@This()) !void {
         info("Move all .Added to .Picked", .{});
-        try self.entries[@enumToInt(State.Picked)].appendSlice(self.entries[@enumToInt(State.Added)].toOwnedSlice());
+        try self.entries[@intFromEnum(State.Picked)].appendSlice(try self.entries[@intFromEnum(State.Added)].toOwnedSlice());
     }
 
     pub fn pickDependencies(_: *Projects) !void {}
@@ -304,15 +304,16 @@ const Projects = struct {
 
     pub fn filter(self: *@This(), script: []const u8) !void {
         info("Move projects based on filter {s}", .{script});
-        var from_list = &self.entries[@enumToInt(State.Picked)];
-        var to_list = &self.entries[@enumToInt(State.Denied)];
+        var from_list = &self.entries[@intFromEnum(State.Picked)];
+        var to_list = &self.entries[@intFromEnum(State.Denied)];
         var i = @as(usize, 0);
         while (i < from_list.items.len) {
             const path = from_list.items[i].path;
             debug("checking {s}", .{path});
-            if (spawn(self.allocator, &[_][]const u8{
+            const cmds = [_][]const u8{
                 "sh", "-c", script,
-            }, try std.fs.path.resolve(self.allocator, &[_][]const u8{ from_list.items[i].root, path }))) |term| {
+            };
+            if (spawn(self.allocator, cmds[0..], try std.fs.path.resolve(self.allocator, &[_][]const u8{ from_list.items[i].root, path }))) |term| {
                 if (term.Exited != 0) {
                     try to_list.append(from_list.swapRemove(i));
                 } else {
@@ -340,8 +341,8 @@ const Projects = struct {
                 "git", "ls-files", "-o", "--exclude-standard", "--modified",
             }, root) catch "", max_depth, &dirs);
 
-            var from_list = &self.entries[@enumToInt(State.Picked)];
-            var to_list = &self.entries[@enumToInt(State.Denied)];
+            var from_list = &self.entries[@intFromEnum(State.Picked)];
+            var to_list = &self.entries[@intFromEnum(State.Denied)];
             var i = @as(usize, 0);
             while (i < from_list.items.len) {
                 debug("checking {s}", .{from_list.items[i].path});
@@ -378,16 +379,16 @@ const Projects = struct {
         const allocator = arena.allocator();
         const re = @cImport(@cInclude("regez.h"));
         var slice = try allocator.alignedAlloc(u8, re.alignof_regex_t, re.sizeof_regex_t);
-        const regex = @ptrCast(*re.regex_t, slice.ptr);
+        const regex: *re.regex_t = @ptrCast(slice.ptr);
         var buf = try allocator.alloc(u8, 512);
-        const buf_ptr = @ptrCast([*c]u8, buf.ptr);
+        const buf_ptr: [*c]u8 = @ptrCast(buf.ptr);
         mem.copy(u8, buf[0..pattern.len], pattern);
         buf[pattern.len] = 0;
         if (re.regcomp(regex, buf_ptr, re.REG_EXTENDED) != 0) {
             fatal("Invalid regex '{s}'", .{pattern});
         }
-        var from_list = &self.entries[@enumToInt(from)];
-        var to_list = &self.entries[@enumToInt(to)];
+        var from_list = &self.entries[@intFromEnum(from)];
+        var to_list = &self.entries[@intFromEnum(to)];
         var i = @as(usize, 0);
         while (i < from_list.items.len) {
             const name = from_list.items[i].name;
@@ -454,7 +455,7 @@ fn write(allocator: Allocator, projects: []Projects.Entry, settings_file: []cons
 
 fn exec(allocator: Allocator, cmd: []const []const u8, cwd: ?[]const u8) ![]const u8 {
     info("Execute external command: {s} in {s}", .{ cmd, cwd orelse "." });
-    const result = try std.ChildProcess.exec(.{
+    const result = try std.process.Child.exec(.{
         .allocator = allocator,
         .argv = cmd,
         .cwd = cwd,
@@ -471,8 +472,8 @@ fn exec(allocator: Allocator, cmd: []const []const u8, cwd: ?[]const u8) ![]cons
     return result.stdout;
 }
 
-fn spawn(allocator: Allocator, cmd: [][]const u8, cwd: ?[]const u8) !std.ChildProcess.Term {
-    var child = std.ChildProcess.init(cmd, allocator);
+fn spawn(allocator: Allocator, cmd: []const []const u8, cwd: ?[]const u8) !std.process.Child.Term {
+    var child = std.process.Child.init(cmd, allocator);
     if (cwd) |dir| {
         child.cwd = dir;
     }
@@ -496,9 +497,9 @@ test "test regex common patterns" {
     const allocator = arena.allocator();
     const re = @cImport(@cInclude("regez.h"));
     var slice = try allocator.alignedAlloc(u8, re.alignof_regex_t, re.sizeof_regex_t);
-    const regex = @ptrCast(*re.regex_t, slice.ptr);
+    const regex: *re.regex_t = @ptrCast(slice.ptr);
     var buf = try allocator.alloc(u8, 512);
-    const buf_ptr = @ptrCast([*c]u8, buf.ptr);
+    const buf_ptr: [*c]u8 = @ptrCast(buf.ptr);
     mem.copy(u8, buf[0..pattern.len], pattern);
     buf[pattern.len] = 0;
     if (re.regcomp(regex, buf_ptr, re.REG_EXTENDED) != 0) {
