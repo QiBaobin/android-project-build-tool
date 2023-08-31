@@ -130,15 +130,26 @@ fn build(allocator: Allocator, options: *Options) !void {
     }
     if (options.since_commit) |commit| {
         if (vc_root) |root| {
-            if (exec(allocator, &[_][]const u8{
-                "git", "merge-base", "--all", "HEAD", commit,
-            }, root)) |base| {
-                info("Found the merge base commit {s}", .{base});
-                try projects.denyUnchanged(root, mem.trimRight(u8, base, "\n"), options.threshold);
-            } else |e| {
+            const base = if (spawn(allocator, &[_][]const u8{
+                "git", "merge-base", "--is-ancestor", commit, "HEAD",
+            }, root)) |term| brk: {
+                if (term.Exited == 0) {
+                    info("{s} is ancestor of HEAD, use {s} directly", .{ commit, commit });
+                    break :brk commit;
+                } else if (exec(allocator, &[_][]const u8{
+                    "git", "merge-base", "--all", "HEAD", commit,
+                }, root)) |base| {
+                    info("Found the merge base commit {s}", .{base});
+                    break :brk mem.trimRight(u8, base, "\n");
+                } else |e| {
+                    warn("Call git merge-base failed {}, use the commit {s} directly", .{ e, commit });
+                    break :brk commit;
+                }
+            } else |e| brk: {
                 warn("Call git merge-base failed {}, use the commit {s} directly", .{ e, commit });
-                try projects.denyUnchanged(root, commit, options.threshold);
-            }
+                break :brk commit;
+            };
+            try projects.denyUnchanged(root, base, options.threshold);
         }
     }
     if (options.scan_impacted_projects) {
