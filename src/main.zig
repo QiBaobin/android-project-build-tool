@@ -179,7 +179,7 @@ fn build(allocator: Allocator, options: *Options) !void {
             const end = @min(partitions.len, i + options.threshold);
             try write(allocator, partitions[i..end], settings_file);
             i = end;
-            info("Execute {s}", .{command});
+            info("Execute {}/{} {s}", .{ i + 1, partitions.len, command });
             if (spawn(allocator, command, null)) |term| {
                 if (term.Exited != 0) {
                     fatal("Execute command failed: {s} {}", .{ command, term.Exited });
