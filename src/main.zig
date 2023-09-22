@@ -25,7 +25,6 @@ const usage =
     \\  -c, --settings-file            The gradle settings file will be generated and used
     \\  --threshold                    The max number of project can run at one time, projects more than it will be sepearted into many run
     \\  --max-depth                    Descend at most n directory levels
-    \\  --scan-impacted-projects       Add projects impacted by selected projects too
     \\  -h, --help                     Print command-specific usage
     \\
     \\Environments:
@@ -77,8 +76,6 @@ pub fn main() !void {
             const max_depth = try std.fmt.parseInt(usize, nextOrFatal(&args, arg), 10);
             std.debug.assert(max_depth > 1 and max_depth <= max_depth_allowed);
             options.max_depth = max_depth;
-        } else if (mem.eql(u8, arg, "--scan-impacted-projects")) {
-            options.scan_impacted_projects = true;
         } else {
             try options.commands.append(arg);
             break;
@@ -125,9 +122,6 @@ fn build(allocator: Allocator, options: *Options) !void {
     if (options.invert_match) |pattern| {
         try projects.deny(pattern);
     }
-    if (options.filter) |pattern| {
-        try projects.filter(pattern);
-    }
     if (options.since_commit) |commit| {
         if (vc_root) |root| {
             const base = if (spawn(allocator, &[_][]const u8{
@@ -152,8 +146,8 @@ fn build(allocator: Allocator, options: *Options) !void {
             try projects.denyUnchanged(root, base, options.threshold);
         }
     }
-    if (options.scan_impacted_projects) {
-        try projects.pickDependencies();
+    if (options.filter) |pattern| {
+        try projects.filter(pattern);
     }
 
     const settings_file = options.settings_file orelse if (options.commands.items.len > 0) "build.settings.gradle.kts" else "settings.gradle.kts";
@@ -177,9 +171,9 @@ fn build(allocator: Allocator, options: *Options) !void {
         var i = @as(usize, 0);
         while (i < partitions.len) {
             const end = @min(partitions.len, i + options.threshold);
+            info("Execute {}:{}/{} {s}", .{ i + 1, end, partitions.len, command });
             try write(allocator, partitions[i..end], settings_file);
             i = end;
-            info("Execute {}/{} {s}", .{ i + 1, partitions.len, command });
             if (spawn(allocator, command, null)) |term| {
                 if (term.Exited != 0) {
                     fatal("Execute command failed: {s} {}", .{ command, term.Exited });
@@ -203,7 +197,6 @@ const Options = struct {
     settings_file: ?[]const u8 = null,
     threshold: usize = 1000,
     max_depth: usize = 2,
-    scan_impacted_projects: bool = false,
     commands: std.ArrayList([]const u8),
 };
 const Projects = struct {
@@ -326,9 +319,9 @@ const Projects = struct {
             };
             if (spawn(self.allocator, cmds[0..], try std.fs.path.resolve(self.allocator, &[_][]const u8{ from_list.items[i].root, path }))) |term| {
                 if (term.Exited != 0) {
+                    info("Move {s} from .Picked to .Denied", .{path});
                     try to_list.append(from_list.swapRemove(i));
                 } else {
-                    info("Keep {s} in .Picked", .{path});
                     i += 1;
                 }
             } else |e| {
