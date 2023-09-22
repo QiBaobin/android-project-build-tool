@@ -143,7 +143,7 @@ fn build(allocator: Allocator, options: *Options) !void {
                 warn("Call git merge-base failed {}, use the commit {s} directly", .{ e, commit });
                 break :brk commit;
             };
-            try projects.denyUnchanged(root, base, options.threshold);
+            try projects.denyUnchanged(root, base, max_depth_allowed);
         }
     }
     if (options.filter) |pattern| {
