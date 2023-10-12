@@ -19,6 +19,11 @@ pub fn build(b: *std.build.Builder) void {
     });
     exe.addIncludePath(.{ .path = "lib/regez" });
     exe.linkLibC();
+    exe.addCSourceFile(.{ .file = .{ .path = "src/regez.c" }, .flags = &.{
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+    } });
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
@@ -36,6 +41,11 @@ pub fn build(b: *std.build.Builder) void {
     });
     exe_tests.addIncludePath(.{ .path = "lib/regez" });
     exe_tests.linkLibC();
+    exe_tests.addCSourceFile(.{ .file = .{ .path = "lib/regez.c" }, .flags = &.{
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+    } });
 
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&exe_tests.step);

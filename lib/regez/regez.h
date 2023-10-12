@@ -1,11 +1,12 @@
 #include <regex.h>
-#include <stdalign.h>
-#include <stdbool.h>
 
-const size_t sizeof_regex_t = sizeof(regex_t);
-const size_t alignof_regex_t = alignof(regex_t);
+extern regex_t re;
 
-int isMatch(regex_t *re, char const *input) {
+int compile(char const *pattern) {
+  return regcomp(&re, pattern, REG_EXTENDED);
+}
+
+int isMatch(char const *input) {
   regmatch_t pmatch[0];
-  return regexec(re, input, 0, pmatch, 0);
+  return regexec(&re, input, 0, pmatch, 0);
 }
