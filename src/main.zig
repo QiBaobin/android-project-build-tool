@@ -265,7 +265,7 @@ const Projects = struct {
                     };
                     debug("Found project {s} at {s}/{s}, added", .{ p_name, root, path });
                     try projects.append(p);
-                    entry = null;
+                    // entry = null; // uncomment this line to avoid nested projects
                 } else if (f.kind == .directory and sp < max_depth and !mem.startsWith(u8, name, ".")) {
                     debug("Found {s}", .{name});
                     names[sp * 2] = name;
