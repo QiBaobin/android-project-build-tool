@@ -54,7 +54,6 @@ pub fn main() !void {
             return io.getStdOut().writeAll(usage);
         }
         if (mem.eql(u8, arg, "--")) {
-            _ = args.next();
             break;
         }
 
