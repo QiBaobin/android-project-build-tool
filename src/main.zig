@@ -230,7 +230,7 @@ const Projects = struct {
         var names = [_][]const u8{""} ** (max_depth_allowed * 2);
         var dir_stack: [max_depth_allowed + 1]std.fs.Dir = undefined;
         var iter_stack: [max_depth_allowed + 1]std.fs.Dir.Iterator = undefined;
-        dir_stack[0] = std.fs.openDirAbsolute(root, .{.iterate = true}) catch fatal("Can't open directory: {s}", .{root});
+        dir_stack[0] = std.fs.openDirAbsolute(root, .{ .iterate = true }) catch fatal("Can't open directory: {s}", .{root});
         iter_stack[0] = (&dir_stack[0]).iterate();
         var sp = @as(usize, 0);
         debug("Enter {s}", .{root});
