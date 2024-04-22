@@ -99,7 +99,7 @@ fn build(allocator: Allocator, options: *Options) !void {
         break :blk null;
     };
     const vc_root = if (output) |root| blk: {
-        var dir = mem.trimRight(u8, root, "\n");
+        const dir = mem.trimRight(u8, root, "\n");
         debug("Add git root {s} as one root", .{dir});
         try options.includes.put(dir, {});
         break :blk dir;
@@ -153,7 +153,7 @@ fn build(allocator: Allocator, options: *Options) !void {
     var partitions = projects.entries[@intFromEnum(Projects.State.Picked)].items;
     if (partitions.len > 0 and options.commands.items.len > 0) {
         var gradle_cmd = try std.ArrayList([]const u8).initCapacity(allocator, options.commands.items.len + 3);
-        if (std.os.getenvZ("GRADLE_CMD")) |cmd| {
+        if (std.posix.getenvZ("GRADLE_CMD")) |cmd| {
             var words = mem.tokenize(u8, cmd, " ");
             while (words.next()) |arg| {
                 try gradle_cmd.append(arg);
@@ -228,14 +228,14 @@ const Projects = struct {
         debug("Start scanning {s}", .{root});
         var projects = &self.entries[@intFromEnum(State.Added)];
         var names = [_][]const u8{""} ** (max_depth_allowed * 2);
-        var dir_stack: [max_depth_allowed + 1]std.fs.IterableDir = undefined;
-        var iter_stack: [max_depth_allowed + 1]std.fs.IterableDir.Iterator = undefined;
-        dir_stack[0] = std.fs.openIterableDirAbsolute(root, .{}) catch fatal("Can't open directory: {s}", .{root});
+        var dir_stack: [max_depth_allowed + 1]std.fs.Dir = undefined;
+        var iter_stack: [max_depth_allowed + 1]std.fs.Dir.Iterator = undefined;
+        dir_stack[0] = std.fs.openDirAbsolute(root, .{.iterate = true}) catch fatal("Can't open directory: {s}", .{root});
         iter_stack[0] = (&dir_stack[0]).iterate();
         var sp = @as(usize, 0);
         debug("Enter {s}", .{root});
         while (sp >= 0) {
-            var entry = (&iter_stack[sp]).next() catch |e| blk: {
+            const entry = (&iter_stack[sp]).next() catch |e| blk: {
                 warn("Failed to iterate dir {}", .{e});
                 break :blk null;
             };
@@ -270,7 +270,7 @@ const Projects = struct {
                     names[sp * 2] = name;
                     const depth = sp + 1;
                     debug("Enter level {} dir: {s}", .{ depth, name });
-                    dir_stack[depth] = try (&dir_stack[sp]).dir.openIterableDir(name, .{});
+                    dir_stack[depth] = try (&dir_stack[sp]).openDir(name, .{ .iterate = true });
                     sp = depth;
                     iter_stack[sp] = (&dir_stack[sp]).iterate();
                 }
@@ -382,7 +382,7 @@ const Projects = struct {
         const re = @cImport(@cInclude("regez.h"));
         var buf = try allocator.alloc(u8, 512);
         const buf_ptr: [*c]u8 = @ptrCast(buf.ptr);
-        mem.copy(u8, buf[0..pattern.len], pattern);
+        mem.copyForwards(u8, buf, pattern);
         buf[pattern.len] = 0;
         if (re.compile(buf_ptr) != 0) {
             fatal("Invalid regex '{s}'", .{pattern});
@@ -392,7 +392,7 @@ const Projects = struct {
         var i = @as(usize, 0);
         while (i < from_list.items.len) {
             const name = from_list.items[i].name;
-            mem.copy(u8, buf[0..name.len], name);
+            mem.copyForwards(u8, buf, name);
             buf[name.len] = 0;
             const ret = re.isMatch(buf_ptr);
             if (ret == 0) {
@@ -455,7 +455,7 @@ fn write(allocator: Allocator, projects: []Projects.Entry, settings_file: []cons
 
 fn exec(allocator: Allocator, cmd: []const []const u8, cwd: ?[]const u8) ![]const u8 {
     info("Execute external command: {s} in {s}", .{ cmd, cwd orelse "." });
-    const result = try std.process.Child.exec(.{
+    const result = try std.process.Child.run(.{
         .allocator = allocator,
         .argv = cmd,
         .cwd = cwd,
@@ -498,18 +498,18 @@ test "test regex common patterns" {
     const re = @cImport(@cInclude("regez.h"));
     var buf = try allocator.alloc(u8, 512);
     const buf_ptr: [*c]u8 = @ptrCast(buf.ptr);
-    mem.copy(u8, buf[0..pattern.len], pattern);
+    mem.copyForwards(u8, buf, pattern);
     buf[pattern.len] = 0;
     if (re.compile(buf_ptr) != 0) {
         fatal("Invalid regex '{s}'", .{pattern});
     }
 
-    mem.copy(u8, buf[0..5], "food");
+    mem.copyForwards(u8, buf, "food");
     std.debug.assert(re.isMatch(buf_ptr) == 0);
 
-    mem.copy(u8, buf[0..6], "abart");
+    mem.copyForwards(u8, buf, "abart");
     std.debug.assert(re.isMatch(buf_ptr) == 0);
 
-    mem.copy(u8, buf[0..5], "foba");
+    mem.copyForwards(u8, buf, "foba");
     std.debug.assert(re.isMatch(buf_ptr) == 1);
 }

@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub fn build(b: *std.build.Builder) void {
+pub fn build(b: *std.Build) void {
     // Standard target options allows the person running `zig build` to choose
     // what target to build for. Here we do not override the defaults, which
     // means any target is allowed, and the default is native. Other options
@@ -13,13 +13,13 @@ pub fn build(b: *std.build.Builder) void {
 
     const exe = b.addExecutable(.{
         .name = "abt",
-        .root_source_file = .{ .path = "src/main.zig" },
+        .root_source_file = b.path("src/main.zig"),
         .optimize = optimize,
         .target = target,
     });
-    exe.addIncludePath(.{ .path = "lib/regez" });
+    exe.addIncludePath(b.path("lib/regez"));
     exe.linkLibC();
-    exe.addCSourceFile(.{ .file = .{ .path = "src/regez.c" }, .flags = &.{
+    exe.addCSourceFile(.{ .file = b.path("src/regez.c"), .flags = &.{
         "-Wall",
         "-Wextra",
         "-Werror",
@@ -36,12 +36,12 @@ pub fn build(b: *std.build.Builder) void {
     run_step.dependOn(&run_cmd.step);
 
     const exe_tests = b.addTest(.{
-        .root_source_file = .{ .path = "src/main.zig" },
+        .root_source_file = b.path("src/main.zig"),
         .optimize = optimize,
     });
-    exe_tests.addIncludePath(.{ .path = "lib/regez" });
+    exe_tests.addIncludePath(b.path("lib/regez"));
     exe_tests.linkLibC();
-    exe_tests.addCSourceFile(.{ .file = .{ .path = "src/regez.c" }, .flags = &.{
+    exe_tests.addCSourceFile(.{ .file = b.path("src/regez.c"), .flags = &.{
         "-Wall",
         "-Wextra",
         "-Werror",
