@@ -3,17 +3,16 @@
 ## setup development enviroment if need
 
 ``` sh
-brew install zig
+source bin/activate-hermit
 ```
 
 ## change code
 
-## publish binary to artifactory
+## build or install to one directory
 
-Start docker, this is needed because we also need cross compile linux version
 
 ``` sh
-./build.sh
+zig build -Doptimize=ReleaseSafe -p ~/bin
 ```
 
 
@@ -23,7 +22,6 @@ Start docker, this is needed because we also need cross compile linux version
 ### Commands it supports
 
 ``` shell
-./abt --help
 Usage: abt [options] [--] [gradle command]
 
 Options:
@@ -40,8 +38,7 @@ Options:
 
 Environments:
 
- GRADLE_CMD                      The gradel command to run for building, you can give args here too
-  
+ GRADLE_CMD                      The gradel command to run for building, you can give args here too 
 ```
 
 #### Examples

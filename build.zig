@@ -41,7 +41,7 @@ pub fn build(b: *std.build.Builder) void {
     });
     exe_tests.addIncludePath(.{ .path = "lib/regez" });
     exe_tests.linkLibC();
-    exe_tests.addCSourceFile(.{ .file = .{ .path = "lib/regez.c" }, .flags = &.{
+    exe_tests.addCSourceFile(.{ .file = .{ .path = "src/regez.c" }, .flags = &.{
         "-Wall",
         "-Wextra",
         "-Werror",

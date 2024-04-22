@@ -186,7 +186,7 @@ fn build(allocator: Allocator, options: *Options) !void {
     }
 }
 
-const max_depth_allowed = 3;
+const max_depth_allowed = 5;
 const Options = struct {
     since_commit: ?[]const u8 = null,
     includes: StringHashMap(void),
@@ -195,7 +195,7 @@ const Options = struct {
     filter: ?[:0]const u8 = null,
     settings_file: ?[]const u8 = null,
     threshold: usize = 1000,
-    max_depth: usize = 2,
+    max_depth: usize = 3,
     commands: std.ArrayList([]const u8),
 };
 const Projects = struct {
@@ -264,7 +264,7 @@ const Projects = struct {
                     };
                     debug("Found project {s} at {s}/{s}, added", .{ p_name, root, path });
                     try projects.append(p);
-                    // entry = null; // uncomment this line to avoid nested projects
+                    // entry = null; // if not support nested projects, please uncomment
                 } else if (f.kind == .directory and sp < max_depth and !mem.startsWith(u8, name, ".")) {
                     debug("Found {s}", .{name});
                     names[sp * 2] = name;
@@ -298,8 +298,6 @@ const Projects = struct {
         info("Move all .Added to .Picked", .{});
         try self.entries[@intFromEnum(State.Picked)].appendSlice(try self.entries[@intFromEnum(State.Added)].toOwnedSlice());
     }
-
-    pub fn pickDependencies(_: *Projects) !void {}
 
     pub fn deny(self: *@This(), regexp: [:0]const u8) !void {
         return self.move(regexp, .Picked, .Denied);
@@ -360,6 +358,7 @@ const Projects = struct {
             fatal("Can't get git diff, {}", .{e});
         }
     }
+
     inline fn cacheDirs(files: []const u8, max_depth: usize, cache: *StringHashMap(void)) !void {
         var lines = mem.tokenize(u8, files, "\n");
         while (lines.next()) |line| {
