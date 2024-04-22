@@ -10,11 +10,9 @@ jobs:
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@v2
-      - uses: goto-bus-stop/setup-zig@v2
-      - run: zig build test
+      - run: source bin/activate-hermit && zig build test
   lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - uses: goto-bus-stop/setup-zig@v2
-      - run: zig fmt --check src/*.zig
+      - run: source bin/activate-hermit && zig fmt --check src/*.zig
