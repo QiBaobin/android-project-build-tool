@@ -25,6 +25,7 @@ const usage =
     \\  -c, --settings-file            The gradle settings file will be generated and used
     \\  --threshold                    The max number of project can run at one time, projects more than it will be sepearted into many run
     \\  --max-depth                    Descend at most n directory levels
+    \\  -d, --with-dependency-projects Include local projects in the dependencies too
     \\  -h, --help                     Print command-specific usage
     \\
     \\Environments:
@@ -75,6 +76,8 @@ pub fn main() !void {
             const max_depth = try std.fmt.parseInt(usize, nextOrFatal(&args, arg), 10);
             std.debug.assert(max_depth > 1 and max_depth <= max_depth_allowed);
             options.max_depth = max_depth;
+        } else if (mem.eql(u8, arg, "-d") or mem.eql(u8, arg, "--with-dependency-projects")) {
+            options.include_local_dependencies = true;
         } else {
             try options.commands.append(arg);
             break;
@@ -89,6 +92,7 @@ pub fn main() !void {
 
     return build(allocator, &options);
 }
+
 fn build(allocator: Allocator, options: *Options) !void {
     const output = exec(allocator, &[_][]const u8{
         "git",
@@ -148,6 +152,9 @@ fn build(allocator: Allocator, options: *Options) !void {
     if (options.filter) |pattern| {
         try projects.filter(pattern);
     }
+    if (options.include_local_dependencies) {
+        try projects.add_local_dependencies();
+    }
 
     const settings_file = options.settings_file orelse if (options.commands.items.len > 0) "build.settings.gradle.kts" else "settings.gradle.kts";
     var partitions = projects.entries[@intFromEnum(Projects.State.Picked)].items;
@@ -196,6 +203,7 @@ const Options = struct {
     settings_file: ?[]const u8 = null,
     threshold: usize = 1000,
     max_depth: usize = 3,
+    include_local_dependencies: bool = false,
     commands: std.ArrayList([]const u8),
 };
 const Projects = struct {
@@ -356,6 +364,57 @@ const Projects = struct {
             }
         } else |e| {
             fatal("Can't get git diff, {}", .{e});
+        }
+    }
+
+    pub fn add_local_dependencies(self: *@This()) !void {
+        debug("start to scan local dependencies", .{});
+        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        defer arena.deinit();
+        const allocator = arena.allocator();
+        var from_list = &self.entries[@intFromEnum(State.Added)];
+        var to_list = &self.entries[@intFromEnum(State.Picked)];
+        var i = @as(usize, 0);
+        while (i < to_list.items.len) {
+            const project = &to_list.items[i];
+            debug("scan {s}", .{project.name});
+            i += 1;
+            const file_name = try mem.concat(allocator, u8, &[_][]const u8{ project.root, std.fs.path.sep_str, project.path, std.fs.path.sep_str, if (project.is_build_file_kts) "build.gradle.kts" else "build.gradle" });
+            debug("build file: {s}", .{file_name});
+            var file = std.fs.openFileAbsolute(file_name, .{}) catch fatal("Can't open file: {s}", .{file_name});
+            defer file.close();
+            const content = try std.fs.File.readToEndAlloc(file, allocator, @as(usize, 100_000_000));
+            var lines = mem.tokenize(u8, content, "\n");
+            outer: while (lines.next()) |line| {
+                if (mem.indexOf(u8, line, "project")) |index| {
+                    debug("Found project in line: {s}", .{line});
+                    if (mem.indexOf(u8, line[0..index], "//")) |_| {
+                        debug("Line is commented {s}", .{line});
+                        continue :outer;
+                    }
+                    if (mem.indexOfPos(u8, line, index + 7, ":")) |start| {
+                        if (mem.indexOfNone(u8, line[index + 7 .. start], " \"'(")) |_| {
+                            debug("Not a correct format: {s}", .{line[index+7..]});
+                            continue :outer;
+                        }
+                        if (mem.indexOfAnyPos(u8, line, start, "'\"")) |end| {
+                            const name = line[start + 1 .. end];
+                            debug("Detect a local project: {s}", .{name});
+                            var j = @as(usize, 0);
+                            while (j < from_list.items.len) {
+                                if (mem.eql(u8, from_list.items[j].name, name)) {
+                                    info("Found local project dependency not picked: {s}, import it", .{name});
+                                    try to_list.append(from_list.swapRemove(j));
+                                    continue :outer;
+                                }
+                                j += 1;
+                            }
+                        }
+                    } else {
+                        debug("Not a correct format: {s}", .{line});
+                    }
+                }
+            }
         }
     }
 
