@@ -27,7 +27,7 @@ done)`
 echo $extra_projects
 
 "$CMD" -e "$extra_projects" -f 'touch XXX' -- -v 1>/dev/null 2>&1
-if [ "$*" == "* -s *" ] ; then
+if [[ "$*" == *" -s "* ]] ; then
     "$CMD" "$@"
 else
     "$CMD" -s HEAD "$@"
