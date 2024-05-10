@@ -372,7 +372,7 @@ const Projects = struct {
         var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
         defer arena.deinit();
         const allocator = arena.allocator();
-        var from_list = &self.entries[@intFromEnum(State.Added)];
+        const from_lists = [_]*ArrayList(Entry){ &self.entries[@intFromEnum(State.Added)], &self.entries[@intFromEnum(State.Denied)] };
         var to_list = &self.entries[@intFromEnum(State.Picked)];
         var i = @as(usize, 0);
         while (i < to_list.items.len) {
@@ -394,20 +394,22 @@ const Projects = struct {
                     }
                     if (mem.indexOfPos(u8, line, index + 7, ":")) |start| {
                         if (mem.indexOfNone(u8, line[index + 7 .. start], " \"'(")) |_| {
-                            debug("Not a correct format: {s}", .{line[index+7..]});
+                            debug("Not a correct format: {s}", .{line[index + 7 ..]});
                             continue :outer;
                         }
                         if (mem.indexOfAnyPos(u8, line, start, "'\"")) |end| {
                             const name = line[start + 1 .. end];
                             debug("Detect a local project: {s}", .{name});
-                            var j = @as(usize, 0);
-                            while (j < from_list.items.len) {
-                                if (mem.eql(u8, from_list.items[j].name, name)) {
-                                    info("Found local project dependency not picked: {s}, import it", .{name});
-                                    try to_list.append(from_list.swapRemove(j));
-                                    continue :outer;
+                            for (from_lists) |from_list| {
+                                var j = @as(usize, 0);
+                                while (j < from_list.items.len) {
+                                    if (mem.eql(u8, from_list.items[j].name, name)) {
+                                        info("Found local project dependency not picked: {s}, import it", .{name});
+                                        try to_list.append(from_list.swapRemove(j));
+                                        continue :outer;
+                                    }
+                                    j += 1;
                                 }
-                                j += 1;
                             }
                         }
                     } else {
