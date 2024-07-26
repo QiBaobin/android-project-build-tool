@@ -1,19 +1,14 @@
+name: "Test"
 on:
+  pull_request:
   push:
-    branches:
-    - main
 jobs:
-  test:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{matrix.os}}
-    steps:
-      - uses: actions/checkout@v2
-      - run: source bin/activate-hermit && zig build test
-  lint:
+  tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - run: source bin/activate-hermit && zig fmt --check src/*.zig
+    - uses: actions/checkout@v4
+    - uses: cachix/install-nix-action@v27
+      with:
+        github_access_token: ${{ secrets.GITHUB_TOKEN }}
+    - run: nix develop -c zig build
+    - run: nix flake check
