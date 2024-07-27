@@ -3,7 +3,7 @@
 ## setup development enviroment if need
 
 ``` sh
-source bin/activate-hermit
+nix develop
 ```
 
 ## change code
@@ -13,6 +13,15 @@ source bin/activate-hermit
 
 ``` sh
 zig build -Doptimize=ReleaseSafe -p ~/bin
+```
+or using nix
+``` sh
+nix build && cp result/bin/abt ~/bin
+# or
+nix profile install .
+
+# directly run
+nix run github:QiBaobin/android-project-build-tool -- --help
 ```
 
 
