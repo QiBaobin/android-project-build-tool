@@ -7,3 +7,5 @@ zig-out/
 /build-*/
 /docgen_tmp/
 .direnv/
+result
+settings.gradle.kts
