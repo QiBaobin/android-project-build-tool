@@ -16,22 +16,12 @@
           src = ./.;
           buildInputs = [ zig ];
           phases = [];
-          configurePhase = ''
-            mkdir -p "$TMP/src"
-            cp -R "$src"/* "$TMP/src/"
-          '';
           buildPhase = ''
-            cd "$TMP/src"
-            zig build --global-cache-dir .
+            zig build --global-cache-dir $TMP
           '';
           installPhase = ''
-            cd "$TMP/src"
-            zig build -p "$out" --release=safe --global-cache-dir .
+            zig build -p "$out" --release=safe --global-cache-dir $TMP
           '';
-        };
-        apps.default = {
-          type = "app";
-          program = "${self.packages.${system}.default}/bin/abt";
         };
       }
     );
