@@ -4,18 +4,27 @@
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    zig-overlay.url = "github:mitchellh/zig-overlay";
+    zig-overlay.inputs.nixpkgs.follows = "nixpkgs";
+    zls-overlay = {
+      url = "github:zigtools/zls/0.13.0";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.flake-utils.follows = "flake-utils";
+      inputs.zig-overlay.follows = "zig-overlay";
+    };
   };
-  outputs = { self, nixpkgs, flake-utils }:
+  outputs = { self, nixpkgs, flake-utils, zls-overlay, zig-overlay }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
+        zig = zig-overlay.packages.${system}."0.13.0";
+        zls = zls-overlay.packages.${system}.zls;
       in
-      with pkgs; {
-        packages.default = stdenv.mkDerivation {
+      {
+        packages.default = pkgs.stdenv.mkDerivation {
           name = "abt";
           src = ./.;
-          buildInputs = [ zig ];
-          phases = [];
+          nativeBuildInputs = [ zig zls ];
           buildPhase = ''
             zig build --global-cache-dir $TMP
           '';
