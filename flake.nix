@@ -19,9 +19,7 @@
         pkgs = import nixpkgs { inherit system; };
         zig = zig-overlay.packages.${system}."0.13.0";
         zls = zls-overlay.packages.${system}.zls;
-      in
-      {
-        packages.default = pkgs.stdenv.mkDerivation {
+        abt = pkgs.stdenv.mkDerivation {
           name = "abt";
           src = ./.;
           nativeBuildInputs = [ zig zls ];
@@ -30,6 +28,15 @@
           '';
           installPhase = ''
             zig build -p "$out" --release=safe --global-cache-dir $TMP
+          '';
+        };
+      in
+      {
+        packages.default = abt;
+        devShells.env = pkgs.mkShellNoCC {
+          packages = [ abt ];
+          shellHook = ''
+          ${abt}/bin/abt --help
           '';
         };
       }
