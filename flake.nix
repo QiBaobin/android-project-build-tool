@@ -36,7 +36,7 @@
         devShells.env = pkgs.mkShellNoCC {
           packages = [ abt ];
           shellHook = ''
-          ${abt}/bin/abt --help
+          ${abt}/bin/abt --version
           '';
         };
       }

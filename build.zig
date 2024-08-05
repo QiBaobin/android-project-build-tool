@@ -17,6 +17,11 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .target = target,
     });
+    const options = b.addOptions();
+    const version = b.option([]const u8, "version", "application version string") orelse "1.0.0";
+    options.addOption([]const u8, "version", version);
+    exe.root_module.addOptions("config", options);
+
     exe.addIncludePath(b.path("lib/regez"));
     exe.linkLibC();
     exe.addCSourceFile(.{ .file = b.path("src/regez.c"), .flags = &.{

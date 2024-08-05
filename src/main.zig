@@ -12,6 +12,9 @@ const warn = std.log.warn;
 const debug = std.log.debug;
 const info = std.log.info;
 
+const config = @import("config");
+const semver = std.SemanticVersion.parse(config.version) catch unreachable;
+
 const usage =
     \\Usage: abt [options] [--] [gradle command]
     \\
@@ -27,6 +30,7 @@ const usage =
     \\  --max-depth                    Descend at most n directory levels
     \\  -d, --with-dependency-projects Include local projects in the dependencies too
     \\  -h, --help                     Print command-specific usage
+    \\  -V, --version                  Print version
     \\
     \\Environments:
     \\
@@ -51,6 +55,9 @@ pub fn main() !void {
     const cwd = try std.fs.cwd().realpathAlloc(allocator, ".");
     _ = args.skip(); // skip program path
     while (args.next()) |arg| {
+        if (mem.eql(u8, arg, "-V") or mem.eql(u8, arg, "--version")) {
+            return io.getStdOut().writer().print("version: {s}\n", .{config.version});
+        }
         if (mem.eql(u8, arg, "-h") or mem.eql(u8, arg, "--help")) {
             return io.getStdOut().writeAll(usage);
         }
